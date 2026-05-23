@@ -94,6 +94,24 @@ class CopilotBackend:
             return []
         return await self.client.list_models()
 
+    async def get_quota(self):
+        """Per-category Copilot usage/quota (chat, completions, premium requests),
+        same data VSCode shows. Returns a JSON-safe dict keyed by category."""
+        if not self.client:
+            return None
+        res = await self.client.rpc.account.get_quota()
+        out = {}
+        for key, q in (getattr(res, "quota_snapshots", None) or {}).items():
+            out[key] = {
+                "entitlement": q.entitlement_requests,
+                "used": q.used_requests,
+                "remaining_percentage": q.remaining_percentage,
+                "unlimited": q.is_unlimited_entitlement,
+                "overage": q.overage,
+                "reset_date": q.reset_date,
+            }
+        return out
+
     async def set_model(self, model: str, reasoning: str | None = None):
         if self.session:
             if reasoning:

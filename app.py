@@ -123,6 +123,14 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def get_usage(self):
+        if not self.backend:
+            return {"ok": False, "error": "Backend not started"}
+        try:
+            return {"ok": True, "quota": self._run(self.backend.get_quota())}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     # ----- conversation history (no backend required) -----
 
     def list_conversations(self):
