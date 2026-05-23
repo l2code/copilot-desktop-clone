@@ -99,7 +99,8 @@ class Api:
         try:
             status = self._run(self.backend.start())
             if not self.backend.authenticated:
-                return {"ok": False, "needsAuth": True, "error": "Not signed in to GitHub Copilot"}
+                return {"ok": False, "needsAuth": True, "error": "Not signed in to GitHub Copilot",
+                        "host": os.environ.get("COPILOT_HOST", "")}
             models = []
             try:
                 models = [getattr(m, "id", str(m)) for m in self._run(self.backend.list_models())]
@@ -261,17 +262,24 @@ class Api:
                 return p
         return None
 
-    def sign_in(self):
+    def sign_in(self, host=None):
         """Run the bundled Copilot device-flow login in the background, streaming the
-        device code/URL to the UI; on success, reconnect (re-run start)."""
+        device code/URL to the UI; on success, reconnect (re-run start). Pass a host
+        (e.g. https://your-co.ghe.com) to sign in to GitHub Enterprise Cloud."""
         import threading, subprocess, re
         cli = self._copilot_cli()
         if not cli:
             return {"ok": False, "error": "Copilot CLI not found"}
+        host = (host or os.environ.get("COPILOT_HOST") or "").strip()
+        args = [cli, "login"]
+        if host and host not in ("https://github.com", "github.com"):
+            if not host.startswith("http"):
+                host = "https://" + host
+            args += ["--host", host]
 
         def worker():
             try:
-                p = subprocess.Popen([cli, "login"], stdout=subprocess.PIPE,
+                p = subprocess.Popen(args, stdout=subprocess.PIPE,
                                      stderr=subprocess.STDOUT, text=True, bufsize=1)
                 for line in p.stdout:
                     url = re.search(r"https://\S*github\.com/login/device\S*", line)
@@ -408,6 +416,12 @@ class Api:
 
 
 def main():
+    # Optional: `python app.py --host https://your-co.ghe.com` for GitHub Enterprise.
+    import sys
+    if "--host" in sys.argv:
+        i = sys.argv.index("--host")
+        if i + 1 < len(sys.argv):
+            os.environ["COPILOT_HOST"] = sys.argv[i + 1]
     api = Api()
     window = webview.create_window(
         "Copilot Desktop",

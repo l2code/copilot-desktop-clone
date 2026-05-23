@@ -130,6 +130,9 @@
   .auth-btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 22px;font-size:14px;cursor:pointer;font-family:var(--font)}
   .auth-btn:hover{background:var(--accent-hover)}
   .auth-btn:disabled{opacity:.6;cursor:default}
+  .auth-host{margin-bottom:14px;display:flex;flex-direction:column;gap:8px;align-items:center}
+  .auth-host-input{width:100%;max-width:320px;box-sizing:border-box;background:var(--bg-elev);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:8px 10px;font-size:13px;font-family:var(--font);outline:none}
+  .auth-host-input:focus{border-color:var(--accent)}
   /* model selector + send button grouped at composer bottom-right */
   .composer-right{display:flex;align-items:center;gap:8px}
   .composer-right .model-select{padding:4px 8px;font-size:12.5px}
@@ -466,6 +469,13 @@
           <h2>Sign in to GitHub Copilot</h2>
           <p id="authMsg">Sign in with your GitHub account to use Copilot on this machine.</p>
           <div id="authCode" class="auth-code" style="display:none"></div>
+          <div class="auth-host">
+            <span class="seg-group">
+              <button class="seg on" id="authHostDotcom" onclick="authSetHost('dotcom')">GitHub.com</button>
+              <button class="seg" id="authHostGhe" onclick="authSetHost('ghe')">Enterprise</button>
+            </span>
+            <input id="authHostUrl" class="auth-host-input" style="display:none" placeholder="https://your-company.ghe.com">
+          </div>
           <button class="auth-btn" id="authBtn" onclick="startSignIn()">Sign in</button>
         </div>
       </div>
@@ -679,6 +689,7 @@ async function initBackend(){
     } else if(res && res.needsAuth){
       setStatus('warn');
       showAuth(true);
+      if(res.host) authPrefillHost(res.host);
     } else {
       setStatus('err');
       showBanner('err','Copilot not connected: ' + ((res&&res.error)||'unknown error') + '.');
@@ -705,11 +716,28 @@ function showAuth(needed, msg){
   o.classList.toggle('show', !!needed);
   if(msg) document.getElementById('authMsg').textContent = msg;
 }
+let authHostMode = 'dotcom';
+function authSetHost(m){
+  authHostMode = m;
+  document.getElementById('authHostDotcom').classList.toggle('on', m==='dotcom');
+  document.getElementById('authHostGhe').classList.toggle('on', m==='ghe');
+  const inp = document.getElementById('authHostUrl');
+  inp.style.display = m==='ghe' ? 'block' : 'none';
+  if(m==='ghe') inp.focus();
+}
+function authPrefillHost(h){
+  if(h && h.indexOf('github.com') === -1){ authSetHost('ghe'); document.getElementById('authHostUrl').value = h; }
+}
 async function startSignIn(){
+  let host = '';
+  if(authHostMode === 'ghe'){
+    host = document.getElementById('authHostUrl').value.trim();
+    if(!host){ document.getElementById('authMsg').textContent = 'Enter your GitHub Enterprise host URL (e.g. https://your-co.ghe.com).'; return; }
+  }
   const btn = document.getElementById('authBtn');
   btn.disabled = true; btn.textContent = 'Starting login\u2026';
   document.getElementById('authMsg').textContent = 'Starting GitHub device login \u2014 open the link below and enter the code.';
-  try{ await window.pywebview.api.sign_in(); }catch(e){ btn.disabled=false; btn.textContent='Sign in'; }
+  try{ await window.pywebview.api.sign_in(host); }catch(e){ btn.disabled=false; btn.textContent='Sign in'; }
 }
 function onAuthCode(url, code){
   const c = document.getElementById('authCode'); c.style.display = 'block';
