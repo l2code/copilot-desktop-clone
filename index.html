@@ -547,7 +547,9 @@ async function openUsage(){
   const quota = res.quota || {};
   const keys = Object.keys(quota);
   if(!keys.length){
-    body.innerHTML = '<p class="set-val" style="padding:14px 0">No usage data reported for this account.</p>';
+    body.innerHTML = '<p class="set-val" style="padding:14px 0">No usage data yet — usage is reported per request. ' +
+      'Send a message to Copilot, then reopen this panel.<br><br>' +
+      'You can always verify totals at <span class="set-val" style="color:var(--accent)">github.com/settings/billing</span> → Metered usage → Copilot.</p>';
     return;
   }
   body.innerHTML = keys.map(k=>renderQuota(k, quota[k])).join('');

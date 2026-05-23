@@ -40,6 +40,7 @@ class CopilotBackend:
         self._on_delta = None
         self._on_done = None
         self._on_error = None
+        self.last_quota = None  # latest quota seen via assistant.usage events
 
     def set_handlers(self, on_delta, on_done, on_error):
         """Register UI callbacks. on_delta(text), on_done(), on_error(msg)."""
@@ -76,6 +77,10 @@ class CopilotBackend:
             elif t == SessionEventType.ASSISTANT_TURN_END:
                 if self._on_done:
                     self._on_done()
+            elif t == SessionEventType.ASSISTANT_USAGE:
+                snaps = getattr(event.data, "quota_snapshots", None)
+                if snaps:
+                    self.last_quota = self._snaps_to_dict(snaps)
             elif t == SessionEventType.SESSION_ERROR:
                 msg = getattr(event.data, "message", None) or str(event.data)
                 if self._on_error:
@@ -83,6 +88,23 @@ class CopilotBackend:
         except Exception as e:  # never let a handler crash the SDK loop
             if self._on_error:
                 self._on_error(f"event handler error: {e}")
+
+    @staticmethod
+    def _snaps_to_dict(snaps):
+        """Normalize a quota-snapshot dict (from either account.getQuota or an
+        assistant.usage event -- both share these field names)."""
+        out = {}
+        for key, q in (snaps or {}).items():
+            rd = getattr(q, "reset_date", None)
+            out[key] = {
+                "entitlement": getattr(q, "entitlement_requests", None),
+                "used": getattr(q, "used_requests", None),
+                "remaining_percentage": getattr(q, "remaining_percentage", None),
+                "unlimited": getattr(q, "is_unlimited_entitlement", None),
+                "overage": getattr(q, "overage", None),
+                "reset_date": str(rd) if rd else None,
+            }
+        return out
 
     async def send(self, prompt: str):
         if not self.session:
@@ -96,21 +118,21 @@ class CopilotBackend:
 
     async def get_quota(self):
         """Per-category Copilot usage/quota (chat, completions, premium requests),
-        same data VSCode shows. Returns a JSON-safe dict keyed by category."""
-        if not self.client:
-            return None
-        res = await self.client.rpc.account.get_quota()
-        out = {}
-        for key, q in (getattr(res, "quota_snapshots", None) or {}).items():
-            out[key] = {
-                "entitlement": q.entitlement_requests,
-                "used": q.used_requests,
-                "remaining_percentage": q.remaining_percentage,
-                "unlimited": q.is_unlimited_entitlement,
-                "overage": q.overage,
-                "reset_date": q.reset_date,
-            }
-        return out
+        same data VSCode shows. Returns a JSON-safe dict keyed by category.
+
+        Tries the experimental account.getQuota endpoint first; if it returns
+        nothing (common with global/logged-in auth), falls back to the latest
+        snapshot captured from assistant.usage events after a request."""
+        data = {}
+        if self.client:
+            try:
+                res = await self.client.rpc.account.get_quota()
+                data = self._snaps_to_dict(getattr(res, "quota_snapshots", None))
+            except Exception:
+                data = {}
+        if not data and self.last_quota:
+            data = self.last_quota
+        return data
 
     async def set_model(self, model: str, reasoning: str | None = None):
         if self.session:
