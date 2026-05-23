@@ -1270,11 +1270,12 @@ function onCopilotActivity(d){
     const think = act.querySelector('.thinking');
     if(think){ think.open=false; const s=think.querySelector('summary'); if(s) s.textContent='Thought for a moment'; }
   } else if(d.kind==='tool'){
+    const det = d.detail ? ` <code>${escapeHtml(d.detail)}</code>` : '';
     act.insertAdjacentHTML('beforeend',
-      `<div class="act-line" data-aid="${escapeAttr(d.id||'')}">${actSvg('tool')}<span>Using <b>${escapeHtml(d.name||'tool')}</b></span><span class="act-status">…</span></div>`);
+      `<div class="act-line" data-aid="${escapeAttr(d.id||'')}">${actSvg('tool')}<span><b>${escapeHtml(d.name||'tool')}</b>${det}</span><span class="act-status">…</span></div>`);
   } else if(d.kind==='tool_done'){
     const line = act.querySelector(`.act-line[data-aid="${escapeAttr(d.id||'')}"]`);
-    if(line){ const st=line.querySelector('.act-status'); if(st) st.textContent='\u2713'; }
+    if(line){ const st=line.querySelector('.act-status'); if(st){ st.textContent = (d.success===false)?'\u2717':'\u2713'; if(d.success===false) st.style.color='#ff7b72'; } }
   } else if(d.kind==='command'){
     act.insertAdjacentHTML('beforeend',
       `<div class="act-line">${actSvg('cmd')}<code>${escapeHtml(d.cmd||d.name||'')}</code></div>`);

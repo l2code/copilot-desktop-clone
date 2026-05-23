@@ -216,6 +216,25 @@ class CopilotBackend:
             elif t == SessionEventType.ASSISTANT_REASONING:
                 if self._on_activity:
                     self._on_activity({"kind": "reasoning_done"})
+            elif t == SessionEventType.TOOL_EXECUTION_START:
+                d = event.data
+                args = getattr(d, "arguments", None)
+                detail = ""
+                if isinstance(args, dict):
+                    detail = (args.get("command") or args.get("cmd") or args.get("path")
+                              or args.get("filePath") or args.get("file_path") or "")
+                    if not detail:
+                        import json as _j
+                        try: detail = _j.dumps(args)
+                        except Exception: detail = str(args)
+                if self._on_activity:
+                    self._on_activity({"kind": "tool", "name": getattr(d, "tool_name", "tool"),
+                                       "id": getattr(d, "tool_call_id", ""), "detail": str(detail)[:400]})
+            elif t == SessionEventType.TOOL_EXECUTION_COMPLETE:
+                d = event.data
+                if self._on_activity:
+                    self._on_activity({"kind": "tool_done", "id": getattr(d, "tool_call_id", ""),
+                                       "success": bool(getattr(d, "success", True))})
             elif t == SessionEventType.EXTERNAL_TOOL_REQUESTED:
                 if self._on_activity:
                     self._on_activity({"kind": "tool", "name": getattr(event.data, "tool_name", ""), "id": getattr(event.data, "request_id", "")})
