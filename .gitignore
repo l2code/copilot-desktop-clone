@@ -1,0 +1,20 @@
+# Python virtual environments (platform-specific — never commit these)
+.venv/
+venv/
+env/
+
+# Python bytecode / caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+
+# Copilot CLI local auth / config (do not publish credentials)
+.copilot/
+
+# OS / editor cruft
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
