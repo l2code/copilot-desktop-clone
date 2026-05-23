@@ -42,6 +42,7 @@ class CopilotBackend:
         self.working_dir = working_dir   # folder Copilot may read/run commands in
         self.instructions = ""           # custom instructions (system message, append mode)
         self.mcp_servers = None          # dict[str, MCPServerConfig] for MCP tools
+        self.mode = "interactive"        # interactive | plan | autopilot
         self.client: CopilotClient | None = None
         self.session = None
         self._on_delta = None
@@ -127,12 +128,7 @@ class CopilotBackend:
             fut.get_loop().call_soon_threadsafe(fut.set_result, decision)
 
     async def start(self):
-        cfg = SubprocessConfig(
-            github_token=self.github_token,
-            use_logged_in_user=(self.github_token is None),
-            cwd=self.working_dir,
-        )
-        self.client = CopilotClient(cfg, auto_start=False)
+        self.client = CopilotClient(self._subprocess_cfg(), auto_start=False)
         await self.client.start()
 
         # Surfaces whether Copilot auth succeeded; raised to the UI if not.
@@ -140,6 +136,27 @@ class CopilotBackend:
 
         self.session = await self._make_session()
         return status
+
+    def _subprocess_cfg(self):
+        # Agent mode is a subprocess startup flag (interactive | plan | autopilot).
+        args = ["--mode", self.mode] if self.mode else []
+        return SubprocessConfig(
+            github_token=self.github_token,
+            use_logged_in_user=(self.github_token is None),
+            cwd=self.working_dir,
+            cli_args=args,
+        )
+
+    async def set_mode(self, mode):
+        """Switch agent mode. The mode is a startup flag, so the client subprocess
+        is restarted; the chat starts fresh in the new mode."""
+        self.mode = mode
+        if self.client:
+            try:
+                await self.client.stop()
+            except Exception:
+                pass
+        await self.start()
 
     async def _make_session(self):
         kwargs = dict(

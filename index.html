@@ -289,6 +289,15 @@
   .foot-item:hover{border-color:var(--border);color:var(--text);background:var(--bg-elev)}
   .foot-item svg{width:13px;height:13px;fill:currentColor;flex-shrink:0}
   .foot-item span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .foot-dd{position:relative}
+  .foot-menu{position:absolute;bottom:calc(100% + 6px);left:0;min-width:250px;background:var(--bg-elev);
+    border:1px solid var(--border);border-radius:10px;padding:4px;display:none;z-index:60;
+    box-shadow:0 8px 28px rgba(0,0,0,.45)}
+  .foot-dd.open .foot-menu{display:block}
+  .foot-opt{padding:8px 10px;border-radius:7px;cursor:pointer}
+  .foot-opt:hover,.foot-opt.sel{background:var(--bg-elev-2)}
+  .foot-opt b{display:block;font-size:13px;color:var(--text)}
+  .foot-opt span{font-size:12px;color:var(--text-dim)}
   .composer-tools{display:flex;gap:2px}
   .ctool{width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;
     color:var(--text-dim);cursor:pointer}
@@ -450,6 +459,14 @@
               <svg viewBox="0 0 16 16"><path d="M1.75 2.5A1.75 1.75 0 000 4.25v7.5C0 12.99.78 14 1.75 14h12.5A1.75 1.75 0 0016 12.25V5.75A1.75 1.75 0 0014.25 4H7.5L6 2.5z"/></svg>
               <span id="wdName">Choose a folder</span>
             </button>
+            <div class="foot-dd" id="modeDD">
+              <button class="foot-item" onclick="toggleModeMenu(event)" title="Agent mode">
+                <svg viewBox="0 0 16 16"><path d="M8 1l1.9 3.9 4.3.6-3.1 3 .7 4.3L8 14.8 4.2 12.8l.7-4.3-3.1-3 4.3-.6z"/></svg>
+                <span id="modeName">Interactive</span>
+                <svg viewBox="0 0 16 16"><path d="M4.5 6l3.5 3.5L11.5 6z"/></svg>
+              </button>
+              <div class="foot-menu" id="modeMenu"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -641,6 +658,8 @@ document.addEventListener('click', (e)=>{
   if(dd && !dd.contains(e.target)) dd.classList.remove('open');
   const comp = document.querySelector('.composer');
   if(comp && !comp.contains(e.target)) closeSlash();
+  const md = document.getElementById('modeDD');
+  if(md && !md.contains(e.target)) md.classList.remove('open');
 });
 (function(){
   const t = document.getElementById('thread');
@@ -731,6 +750,31 @@ function setWdDisplay(path){
   const base = String(path).replace(/[\\/]+$/,'').split(/[\\/]/).pop() || path;
   w.textContent = base;
   const b = document.getElementById('wdBtn'); if(b) b.title = 'Working folder: ' + path;
+}
+const MODES = [
+  {id:'interactive', name:'Interactive', desc:'Works step by step'},
+  {id:'plan',        name:'Plan',        desc:'Plans the approach before coding'},
+  {id:'autopilot',   name:'Autopilot',   desc:'Runs autonomously \u2014 you still approve actions'},
+];
+let agentMode = 'interactive';
+function renderModeMenu(){
+  document.getElementById('modeMenu').innerHTML = MODES.map(m=>
+    `<div class="foot-opt ${m.id===agentMode?'sel':''}" onclick="selectMode('${m.id}')"><b>${m.name}</b><span>${m.desc}</span></div>`).join('');
+}
+function toggleModeMenu(e){ e.stopPropagation(); renderModeMenu(); document.getElementById('modeDD').classList.toggle('open'); }
+async function selectMode(id){
+  document.getElementById('modeDD').classList.remove('open');
+  if(id===agentMode) return;
+  agentMode = id;
+  const m = MODES.find(x=>x.id===id);
+  document.getElementById('modeName').textContent = m ? m.name : id;
+  if(backendReady){
+    showBanner('warn','Switching to ' + (m?m.name:id) + ' mode\u2026');
+    try{ await window.pywebview.api.set_mode(id); }catch(e){}
+    try{ await loadCommands(); }catch(e){}
+    newChat();
+    flashBanner('Mode: ' + (m ? m.name : id));
+  }
 }
 async function pickFolder(){
   if(!backendReady) return;

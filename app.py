@@ -211,6 +211,18 @@ class Api:
         """Copilot slash commands captured from commands.changed events."""
         return self.backend.commands if self.backend else []
 
+    def get_mode(self):
+        return {"ok": True, "mode": self.backend.mode if self.backend else "interactive"}
+
+    def set_mode(self, mode):
+        if not self.backend:
+            return {"ok": False, "error": "Backend not started"}
+        try:
+            self._run(self.backend.set_mode(mode))
+            return {"ok": True, "mode": mode}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def get_usage(self):
         if not self.backend:
             return {"ok": False, "error": "Backend not started"}
