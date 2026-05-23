@@ -169,10 +169,10 @@
   /* messages */
   .msg{display:flex;margin-bottom:18px}
   .msg.user{justify-content:flex-start}
-  .msg.assistant{justify-content:flex-end}
+  .msg.assistant{justify-content:flex-start}
   .m-body{min-width:0}
   .msg.user .m-body{max-width:78%}
-  .msg.assistant .m-body{max-width:90%}
+  .msg.assistant .m-body{flex:1;max-width:100%}
   .msg.user .m-content{background:#0a0d12;border:1px solid var(--border-soft);border-radius:12px;padding:9px 13px}
   .msg.assistant .m-content{text-align:left}
   .m-content p{margin-bottom:10px}
