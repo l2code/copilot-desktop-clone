@@ -118,6 +118,18 @@
   .status-dot.ok{background:var(--green)}
   .status-dot.warn{background:#e3b341}
   .status-dot.err{background:#da3633}
+  .auth-overlay{position:absolute;inset:0;z-index:40;display:none;align-items:center;justify-content:center;background:var(--bg)}
+  .auth-overlay.show{display:flex}
+  .auth-card{text-align:center;max-width:420px;padding:24px}
+  .auth-glyph{width:48px;height:48px;fill:var(--text);margin-bottom:14px}
+  .auth-card h2{font-size:20px;font-weight:600;margin-bottom:8px}
+  .auth-card p{color:var(--text-dim);font-size:13px;margin-bottom:14px;line-height:1.5}
+  .auth-code{background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;padding:12px 14px;font-size:13px;color:var(--text);margin-bottom:14px;line-height:1.8}
+  .auth-code b{font-family:var(--mono);font-size:17px;letter-spacing:1px}
+  .auth-code a{color:var(--accent)}
+  .auth-btn{background:var(--accent);color:#fff;border:none;border-radius:8px;padding:9px 22px;font-size:14px;cursor:pointer;font-family:var(--font)}
+  .auth-btn:hover{background:var(--accent-hover)}
+  .auth-btn:disabled{opacity:.6;cursor:default}
   /* model selector + send button grouped at composer bottom-right */
   .composer-right{display:flex;align-items:center;gap:8px}
   .composer-right .model-select{padding:4px 8px;font-size:12.5px}
@@ -448,6 +460,15 @@
         </div>
       </div>
 
+      <div id="authOverlay" class="auth-overlay">
+        <div class="auth-card">
+          <svg viewBox="0 0 16 16" class="auth-glyph"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zM5.3 5.7c.6-.7 1.5-1.1 2.7-1.1s2.1.4 2.7 1.1c.5.6.8 1.4.8 2.3v.4c0 .9-.3 1.7-.8 2.3-.6.7-1.5 1.1-2.7 1.1s-2.1-.4-2.7-1.1c-.5-.6-.8-1.4-.8-2.3V8c0-.9.3-1.7.8-2.3z"/></svg>
+          <h2>Sign in to GitHub Copilot</h2>
+          <p id="authMsg">Sign in with your GitHub account to use Copilot on this machine.</p>
+          <div id="authCode" class="auth-code" style="display:none"></div>
+          <button class="auth-btn" id="authBtn" onclick="startSignIn()">Sign in</button>
+        </div>
+      </div>
       <div class="thread" id="thread">
         <div id="bannerHost" style="padding:16px 24px 0"></div>
         <div class="thread-inner" id="threadInner"></div>
@@ -655,10 +676,12 @@ async function initBackend(){
       await loadConversations();
       await loadCommands();
       newChat();
+    } else if(res && res.needsAuth){
+      setStatus('warn');
+      showAuth(true);
     } else {
       setStatus('err');
-      showBanner('err','Copilot not connected: ' + ((res&&res.error)||'unknown error') +
-        '. Sign in with the Copilot CLI, then restart the app.');
+      showBanner('err','Copilot not connected: ' + ((res&&res.error)||'unknown error') + '.');
     }
   }catch(e){
     setStatus('err');
@@ -675,6 +698,39 @@ function setStatus(kind){
 function showBanner(kind, text){
   document.getElementById('bannerHost').innerHTML =
     `<div class="banner ${kind}"><span class="dot"></span><span>${escapeHtml(text)}</span></div>`;
+}
+// ===== In-app sign-in (device flow) =====
+function showAuth(needed, msg){
+  const o = document.getElementById('authOverlay'); if(!o) return;
+  o.classList.toggle('show', !!needed);
+  if(msg) document.getElementById('authMsg').textContent = msg;
+}
+async function startSignIn(){
+  const btn = document.getElementById('authBtn');
+  btn.disabled = true; btn.textContent = 'Starting login\u2026';
+  document.getElementById('authMsg').textContent = 'Starting GitHub device login \u2014 open the link below and enter the code.';
+  try{ await window.pywebview.api.sign_in(); }catch(e){ btn.disabled=false; btn.textContent='Sign in'; }
+}
+function onAuthCode(url, code){
+  const c = document.getElementById('authCode'); c.style.display = 'block';
+  c.innerHTML = `Open <a href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a><br>and enter code:&nbsp; <b>${escapeHtml(code)}</b>`;
+}
+function onAuthStatus(msg){ const m=document.getElementById('authMsg'); if(m) m.textContent = msg || ''; }
+async function onAuthDone(res){
+  const btn = document.getElementById('authBtn');
+  if(res && res.ok){
+    showAuth(false);
+    backendReady = true; setStatus('ok');
+    if(res.models && res.models.length){ MODELS = res.models; modelIdx = 0; document.getElementById('modelName').textContent = MODELS[0]; }
+    if(res.workdir) setWdDisplay(res.workdir);
+    try{ await loadConversations(); await loadCommands(); }catch(e){}
+    newChat();
+    flashBanner('Signed in' + (res.login ? ' as ' + res.login : ''));
+  } else {
+    btn.disabled = false; btn.textContent = 'Try again';
+    document.getElementById('authCode').style.display = 'none';
+    document.getElementById('authMsg').textContent = 'Sign-in failed: ' + ((res && res.error) || 'unknown') + '.';
+  }
 }
 
 // ===== Model dropdown =====

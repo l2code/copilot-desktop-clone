@@ -98,12 +98,15 @@ class Api:
         )
         try:
             status = self._run(self.backend.start())
+            if not self.backend.authenticated:
+                return {"ok": False, "needsAuth": True, "error": "Not signed in to GitHub Copilot"}
             models = []
             try:
                 models = [getattr(m, "id", str(m)) for m in self._run(self.backend.list_models())]
             except Exception:
                 pass
-            return {"ok": True, "status": str(status), "models": models, "workdir": self.backend.working_dir}
+            return {"ok": True, "status": str(status), "models": models,
+                    "workdir": self.backend.working_dir, "login": self.backend.login}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -248,6 +251,53 @@ class Api:
     def get_commands(self):
         """Copilot slash commands captured from commands.changed events."""
         return self.backend.commands if self.backend else []
+
+    def _copilot_cli(self):
+        import copilot
+        base = os.path.join(os.path.dirname(copilot.__file__), "bin")
+        for name in ("copilot.exe", "copilot"):
+            p = os.path.join(base, name)
+            if os.path.exists(p):
+                return p
+        return None
+
+    def sign_in(self):
+        """Run the bundled Copilot device-flow login in the background, streaming the
+        device code/URL to the UI; on success, reconnect (re-run start)."""
+        import threading, subprocess, re
+        cli = self._copilot_cli()
+        if not cli:
+            return {"ok": False, "error": "Copilot CLI not found"}
+
+        def worker():
+            try:
+                p = subprocess.Popen([cli, "login"], stdout=subprocess.PIPE,
+                                     stderr=subprocess.STDOUT, text=True, bufsize=1)
+                for line in p.stdout:
+                    url = re.search(r"https://\S*github\.com/login/device\S*", line)
+                    code = re.search(r"\b([A-Z0-9]{4}-[A-Z0-9]{4})\b", line)
+                    if url or code:
+                        self._js("onAuthCode",
+                                 url.group(0) if url else "https://github.com/login/device",
+                                 code.group(1) if code else "")
+                    if "signed in" in line.lower():
+                        self._js("onAuthStatus", line.strip()[:120])
+                rc = p.wait(timeout=600)
+                if rc == 0:
+                    try:
+                        if self.backend and self.backend.client:
+                            self._run(self.backend.client.stop())
+                    except Exception:
+                        pass
+                    res = self.start()          # re-run start; now authenticated
+                    self._js("onAuthDone", res)
+                else:
+                    self._js("onAuthDone", {"ok": False, "error": "Login exited (code %d)" % rc})
+            except Exception as e:
+                self._js("onAuthDone", {"ok": False, "error": str(e)})
+
+        threading.Thread(target=worker, daemon=True).start()
+        return {"ok": True, "started": True}
 
     def get_mode(self):
         return {"ok": True, "mode": self.backend.mode if self.backend else "interactive"}

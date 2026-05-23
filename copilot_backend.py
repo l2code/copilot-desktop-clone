@@ -46,6 +46,8 @@ class CopilotBackend:
         self.mcp_status = {}             # name -> {status, error} from session events
         self.mcp_disabled = set()        # names the user has toggled off
         self.mode = "interactive"        # interactive | plan | autopilot
+        self.authenticated = False       # whether the Copilot session is signed in
+        self.login = None                # GitHub login when authenticated
         # Per-kind permission policy (allow | ask | deny). read is always allowed.
         self.perm_rules = {"write": "ask", "shell": "ask", "url": "ask",
                            "mcp": "ask", "memory": "allow", "hook": "ask"}
@@ -149,11 +151,12 @@ class CopilotBackend:
     async def start(self):
         self.client = CopilotClient(self._subprocess_cfg(), auto_start=False)
         await self.client.start()
-
-        # Surfaces whether Copilot auth succeeded; raised to the UI if not.
         status = await self.client.get_auth_status()
-
-        self.session = await self._make_session()
+        self.authenticated = bool(getattr(status, "isAuthenticated", False))
+        self.login = getattr(status, "login", None)
+        # Only create a session once authenticated -- an unauthenticated session is
+        # created but fails on send ("Session was not created with auth info").
+        self.session = await self._make_session() if self.authenticated else None
         return status
 
     def _subprocess_cfg(self):
