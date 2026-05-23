@@ -197,7 +197,10 @@ class CopilotBackend:
             if t == SessionEventType.ASSISTANT_MESSAGE_DELTA:
                 if self._on_delta:
                     self._on_delta(event.data.delta_content)
-            elif t == SessionEventType.ASSISTANT_TURN_END:
+            elif t == SessionEventType.SESSION_IDLE:
+                # Fires when the whole response is complete. A single user request
+                # can span multiple turns (think -> tool -> new turn -> answer), so
+                # finalize on idle, not on each turn_end.
                 if self._on_done:
                     self._on_done()
             elif t == SessionEventType.ASSISTANT_USAGE:
