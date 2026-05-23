@@ -19,6 +19,7 @@ import uuid
 
 from copilot import CopilotClient, SubprocessConfig
 from copilot.generated.session_events import SessionEventType
+from copilot.generated.rpc import ModeSetRequest, SessionMode, SessionsForkRequest
 from copilot.session import PermissionRequestResult
 
 
@@ -43,6 +44,10 @@ class CopilotBackend:
         self.instructions = ""           # custom instructions (system message, append mode)
         self.mcp_servers = None          # dict[str, MCPServerConfig] for MCP tools
         self.mode = "interactive"        # interactive | plan | autopilot
+        # Per-kind permission policy (allow | ask | deny). read is always allowed.
+        self.perm_rules = {"write": "ask", "shell": "ask", "url": "ask",
+                           "mcp": "ask", "memory": "allow", "hook": "ask"}
+        self._user_event_ids = []        # ids of user.message events, for undo
         self.client: CopilotClient | None = None
         self.session = None
         self._on_delta = None
@@ -96,10 +101,19 @@ class CopilotBackend:
                 "reason": str(reason), "canSession": bool(can_session)}
 
     async def _handle_permission(self, req, invocation=None):
-        kind = getattr(self._perm_field(req, "kind", ""), "value", "")
-        # Auto-allow read-only requests and everything once the user trusts the session.
-        if self.auto_approve or kind == "read" or self._perm_field(req, "read_only", False):
+        kind = getattr(self._perm_field(req, "kind", ""), "value", "") or ""
+        read_only = bool(self._perm_field(req, "read_only", False))
+        is_read = (kind == "read") or read_only
+        # Plan mode is read-only: deny anything that changes state.
+        if self.mode == "plan" and not is_read:
+            return PermissionRequestResult(kind="reject")
+        if self.auto_approve or is_read:
             return PermissionRequestResult(kind="approve-once")
+        policy = self.perm_rules.get(kind, "ask")
+        if policy == "allow":
+            return PermissionRequestResult(kind="approve-once")
+        if policy == "deny":
+            return PermissionRequestResult(kind="reject")
         if not self._on_permission:
             return PermissionRequestResult(kind="approve-once")  # no UI present
         loop = asyncio.get_event_loop()
@@ -138,25 +152,50 @@ class CopilotBackend:
         return status
 
     def _subprocess_cfg(self):
-        # Agent mode is a subprocess startup flag (interactive | plan | autopilot).
-        args = ["--mode", self.mode] if self.mode else []
         return SubprocessConfig(
             github_token=self.github_token,
             use_logged_in_user=(self.github_token is None),
             cwd=self.working_dir,
-            cli_args=args,
         )
 
     async def set_mode(self, mode):
-        """Switch agent mode. The mode is a startup flag, so the client subprocess
-        is restarted; the chat starts fresh in the new mode."""
+        """Switch agent mode live (no restart) via the per-session mode RPC."""
         self.mode = mode
-        if self.client:
+        if self.session:
             try:
-                await self.client.stop()
+                await self.session.rpc.mode.set(ModeSetRequest(mode=SessionMode(mode)))
             except Exception:
                 pass
-        await self.start()
+
+    def set_perm_rules(self, rules):
+        if isinstance(rules, dict):
+            self.perm_rules.update({k: v for k, v in rules.items() if v in ("allow", "ask", "deny")})
+
+    async def undo(self):
+        """Rewind the last turn by forking the session to just before the last
+        user message and resuming the fork as the active session."""
+        if not (self.client and self.session and self._user_event_ids):
+            return {"ok": False, "error": "Nothing to undo"}
+        target = self._user_event_ids[-1]
+        sid = getattr(self.session, "session_id", None)
+        if not sid or not target:
+            return {"ok": False, "error": "No undo point"}
+        res = await self.client.rpc.sessions.fork(
+            SessionsForkRequest(session_id=sid, to_event_id=target))
+        new_id = getattr(res, "session_id", None)
+        if not new_id:
+            return {"ok": False, "error": "Fork failed"}
+        self.session = await self.client.resume_session(
+            new_id, on_permission_request=self._handle_permission,
+            on_event=self._handle_event, streaming=True,
+            working_directory=self.working_dir)
+        self._user_event_ids.pop()
+        if self.mode and self.mode != "interactive":
+            try:
+                await self.session.rpc.mode.set(ModeSetRequest(mode=SessionMode(self.mode)))
+            except Exception:
+                pass
+        return {"ok": True}
 
     async def _make_session(self):
         kwargs = dict(
@@ -171,7 +210,13 @@ class CopilotBackend:
             kwargs["system_message"] = {"mode": "append", "content": self.instructions}
         if self.mcp_servers:
             kwargs["mcp_servers"] = self.mcp_servers
-        return await self.client.create_session(**kwargs)
+        sess = await self.client.create_session(**kwargs)
+        if self.mode and self.mode != "interactive":
+            try:
+                await sess.rpc.mode.set(ModeSetRequest(mode=SessionMode(self.mode)))
+            except Exception:
+                pass
+        return sess
 
     async def _recreate(self):
         self.commands = []
@@ -194,6 +239,10 @@ class CopilotBackend:
         """Called by the SDK for every session event. Sync callback."""
         try:
             t = event.type
+            if t == SessionEventType.USER_MESSAGE:
+                eid = getattr(event, "id", None)
+                if eid is not None:
+                    self._user_event_ids.append(str(eid))
             if t == SessionEventType.ASSISTANT_MESSAGE_DELTA:
                 if self._on_delta:
                     self._on_delta(event.data.delta_content)

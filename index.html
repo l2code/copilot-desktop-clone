@@ -358,6 +358,9 @@
   .cz-mono{font-family:var(--mono);font-size:12.5px;min-height:110px}
   .cz-actions{display:flex;justify-content:flex-end;margin-top:8px}
   .cz-err{color:#ff7b72;font-size:12px;margin-top:6px;min-height:14px}
+  .perm-rule{display:flex;align-items:center;justify-content:space-between;margin:7px 0;gap:10px}
+  .perm-rule-label{font-size:12.5px;color:var(--text-dim)}
+  .perm-rule .seg{padding:4px 9px;font-size:11.5px}
   #permReason{margin-bottom:8px}
   #permDetail{background:var(--code-bg);border:1px solid var(--border-soft);border-radius:8px;
     padding:10px 12px;font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;word-break:break-word;
@@ -403,6 +406,7 @@
         <div></div>
         <div class="topbar-actions">
           <div class="icon-btn" title="Toggle sidebar" onclick="toggleSidebar()"><svg viewBox="0 0 16 16"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM8 3a.75.75 0 01.75.75v3.94l2.53 1.46a.75.75 0 11-.75 1.3L7.6 8.6A.75.75 0 017.25 8V3.75A.75.75 0 018 3z"/></svg></div>
+          <div class="icon-btn" title="Undo last turn (revert)" onclick="undoLast()"><svg viewBox="0 0 16 16"><path d="M6 3.5 2.5 7 6 10.5V8h4a2.5 2.5 0 010 5H7v1.5h3a4 4 0 000-8H6V3.5z"/></svg></div>
           <div class="icon-btn" title="Settings" onclick="openSettings()"><svg viewBox="0 0 16 16"><path d="M8 4.75a3.25 3.25 0 100 6.5 3.25 3.25 0 000-6.5zM6.25 8a1.75 1.75 0 113.5 0 1.75 1.75 0 01-3.5 0z"/></svg></div>
         </div>
       </div>
@@ -432,9 +436,10 @@
         <div class="composer-inner">
           <div class="composer">
             <div class="slash-menu" id="slashMenu"></div>
+            <div class="slash-menu" id="atMenu"></div>
             <div class="attachments" id="attachments"></div>
             <textarea id="input" rows="1" placeholder="Ask Copilot anything about your code…  (type / for commands)"
-              oninput="autoGrow(this);toggleSend();updateSlash()" onkeydown="onKey(event)"></textarea>
+              oninput="autoGrow(this);toggleSend();updateSlash();updateAt()" onkeydown="onKey(event)"></textarea>
             <div class="composer-row">
               <div class="composer-tools">
                 <div class="ctool" title="Attach file" onclick="attachFile()"><svg viewBox="0 0 16 16"><path d="M9.6 2.4a3 3 0 014.2 4.2l-6 6a1.9 1.9 0 01-2.7-2.7l5.3-5.3a.75.75 0 011 1l-5.3 5.3a.4.4 0 00.6.6l6-6a1.5 1.5 0 00-2.1-2.1l-6 6a2.6 2.6 0 003.7 3.7l5.3-5.3a.75.75 0 011 1l-5.3 5.3a4.1 4.1 0 01-5.8-5.8l6-6z"/></svg></div>
@@ -563,9 +568,12 @@
       </div>
       <div class="set-row">
         <div class="set-label">Tool permissions</div>
-        <div class="seg-group" id="approveRow">
-          <button class="seg" data-ap="ask" onclick="setAutoApprove(false)">Ask each time</button>
-          <button class="seg" data-ap="all" onclick="setAutoApprove(true)">Allow all</button>
+        <div class="set-val" style="margin-bottom:8px">What Copilot may do without asking. Reads are always allowed; Plan mode is read-only.</div>
+        <div id="permRules"></div>
+        <div class="seg-group" style="margin-top:10px">
+          <button class="seg" onclick="setAllPerm('allow')">Allow all</button>
+          <button class="seg" onclick="setAllPerm('ask')">Ask for all</button>
+          <button class="seg" onclick="setAllPerm('deny')">Deny all</button>
         </div>
       </div>
       <div class="set-row">
@@ -657,7 +665,7 @@ document.addEventListener('click', (e)=>{
   const dd = document.getElementById('modelDropdown');
   if(dd && !dd.contains(e.target)) dd.classList.remove('open');
   const comp = document.querySelector('.composer');
-  if(comp && !comp.contains(e.target)) closeSlash();
+  if(comp && !comp.contains(e.target)){ closeSlash(); closeAt(); }
   const md = document.getElementById('modeDD');
   if(md && !md.contains(e.target)) md.classList.remove('open');
 });
@@ -711,6 +719,29 @@ async function deleteConversation(id){
   try{ await window.pywebview.api.delete_conversation(id); }catch(e){}
   if(id === currentConvId) newChat();
   await loadConversations();
+}
+function renderThread(){
+  const inner = document.getElementById('threadInner');
+  if(!currentMessages.length){ inner.innerHTML = document.getElementById('emptyTemplate').innerHTML; started = false; return; }
+  inner.innerHTML = ''; started = true;
+  currentMessages.forEach(m=>{
+    if(m.role === 'user') addUserMessage(m.content, true, m.attachments);
+    else { const t = assistantShell(); t.innerHTML = renderMarkdown(m.content); addMessageActions(t, m.content); }
+  });
+  scrollDown();
+}
+async function undoLast(){
+  if(!backendReady) return;
+  let res; try{ res = await window.pywebview.api.undo(); }catch(e){ return; }
+  if(res && res.ok){
+    for(let i=currentMessages.length-1;i>=0;i--){ if(currentMessages[i].role==='assistant'){ currentMessages.splice(i,1); break; } }
+    for(let i=currentMessages.length-1;i>=0;i--){ if(currentMessages[i].role==='user'){ currentMessages.splice(i,1); break; } }
+    renderThread();
+    persistCurrent();
+    flashBanner('Rewound the last turn');
+  } else {
+    flashBanner((res && res.error) || 'Nothing to undo');
+  }
 }
 
 async function persistCurrent(){
@@ -769,11 +800,8 @@ async function selectMode(id){
   const m = MODES.find(x=>x.id===id);
   document.getElementById('modeName').textContent = m ? m.name : id;
   if(backendReady){
-    showBanner('warn','Switching to ' + (m?m.name:id) + ' mode\u2026');
     try{ await window.pywebview.api.set_mode(id); }catch(e){}
-    try{ await loadCommands(); }catch(e){}
-    newChat();
-    flashBanner('Mode: ' + (m ? m.name : id));
+    flashBanner('Mode: ' + (m ? m.name : id) + (id==='plan' ? ' (read-only)' : ''));
   }
 }
 async function pickFolder(){
@@ -872,7 +900,23 @@ async function openUsage(){
   body.innerHTML = keys.map(k=>renderQuota(k, quota[k])).join('');
 }
 
-function openSettings(){ renderSettings(); document.getElementById('settingsModal').classList.add('open'); }
+function openSettings(){ renderSettings(); loadPermRulesUI(); document.getElementById('settingsModal').classList.add('open'); }
+const PERM_KINDS = [['write','File edits'],['shell','Shell commands'],['url','Network / URLs'],['mcp','MCP tools']];
+let permRules = {};
+async function loadPermRulesUI(){
+  if(backendReady){ try{ const r = await window.pywebview.api.get_perm_rules(); permRules = (r && r.rules) || {}; }catch(e){} }
+  renderPermRules();
+}
+function renderPermRules(){
+  const host = document.getElementById('permRules'); if(!host) return;
+  host.innerHTML = PERM_KINDS.map(([k,label])=>{
+    const v = permRules[k] || 'ask';
+    const segs = ['allow','ask','deny'].map(p=>`<button class="seg ${v===p?'on':''}" onclick="setPerm('${k}','${p}')">${p[0].toUpperCase()+p.slice(1)}</button>`).join('');
+    return `<div class="perm-rule"><span class="perm-rule-label">${escapeHtml(label)}</span><span class="seg-group">${segs}</span></div>`;
+  }).join('');
+}
+function setPerm(k,p){ permRules[k]=p; if(backendReady){ try{ window.pywebview.api.set_perm_rules(permRules); }catch(e){} } renderPermRules(); }
+function setAllPerm(p){ PERM_KINDS.forEach(([k])=>permRules[k]=p); if(backendReady){ try{ window.pywebview.api.set_perm_rules(permRules); }catch(e){} } renderPermRules(); }
 function closeSettings(){ document.getElementById('settingsModal').classList.remove('open'); }
 async function openCustomize(){
   closeSettings();
@@ -915,8 +959,6 @@ function renderSettings(){
   });
   document.getElementById('settingsAccount').textContent =
     backendReady ? 'Connected to GitHub Copilot' : 'Demo mode (no backend)';
-  document.querySelectorAll('#approveRow .seg').forEach(b=>
-    b.classList.toggle('on', (b.dataset.ap==='all')===autoApprove));
 }
 function setReasoning(level){
   currentReasoning = level;
@@ -965,6 +1007,12 @@ function toggleSend(){
   document.getElementById('send').disabled = (v.length===0 && pendingAttachments.length===0);
 }
 function onKey(e){
+  if(atOpen){
+    if(e.key==='ArrowDown'){ e.preventDefault(); atIdx=(atIdx+1)%atItems.length; updateAtHighlight(); return; }
+    if(e.key==='ArrowUp'){ e.preventDefault(); atIdx=(atIdx-1+atItems.length)%atItems.length; updateAtHighlight(); return; }
+    if(e.key==='Enter' || e.key==='Tab'){ e.preventDefault(); pickAt(atIdx); return; }
+    if(e.key==='Escape'){ closeAt(); return; }
+  }
   if(slashOpen){
     if(e.key==='ArrowDown'){ e.preventDefault(); slashIdx=(slashIdx+1)%slashItems.length; updateSlashHighlight(); return; }
     if(e.key==='ArrowUp'){ e.preventDefault(); slashIdx=(slashIdx-1+slashItems.length)%slashItems.length; updateSlashHighlight(); return; }
@@ -1096,6 +1144,36 @@ function pickSlash(i){
   const input = document.getElementById('input');
   if(c.run){ input.value=''; autoGrow(input); toggleSend(); c.run(); }
   else { input.value = c.cmd + ' '; autoGrow(input); input.focus(); toggleSend(); }
+}
+
+// ===== @-file mentions =====
+let atOpen=false, atItems=[], atIdx=0, atBase='';
+function closeAt(){ const b=document.getElementById('atMenu'); if(b) b.classList.remove('open'); atOpen=false; }
+function updateAtHighlight(){ document.querySelectorAll('#atMenu .slash-opt').forEach((el,i)=>el.classList.toggle('sel', i===atIdx)); }
+function updateAt(){
+  if(!backendReady){ closeAt(); return; }
+  const v = document.getElementById('input').value;
+  const m = v.match(/(^|\s)@([^\s@]*)$/);
+  if(!m){ closeAt(); return; }
+  window.pywebview.api.list_files(m[2]).then(r=>{
+    const box = document.getElementById('atMenu');
+    if(!r || !r.ok){ closeAt(); return; }
+    atBase = r.base || ''; atItems = (r.files || []).slice(0,25);
+    if(!atItems.length){ closeAt(); return; }
+    if(atIdx >= atItems.length) atIdx = 0;
+    box.innerHTML = atItems.map((f,i)=>`<div class="slash-opt ${i===atIdx?'sel':''}" onmousedown="event.preventDefault();pickAt(${i})"><span class="slash-cmd">@${escapeHtml(f)}</span></div>`).join('');
+    box.classList.add('open'); atOpen = true;
+  }).catch(()=>closeAt());
+}
+function pickAt(i){
+  const f = atItems[i]; if(f === undefined) return;
+  closeAt();
+  const ta = document.getElementById('input');
+  ta.value = ta.value.replace(/(^|\s)@([^\s@]*)$/, '$1');
+  const sep = atBase.indexOf('\\') !== -1 ? '\\' : '/';
+  const path = atBase ? (atBase.replace(/[\\/]+$/,'') + sep + f.split('/').join(sep)) : f;
+  pendingAttachments.push({type:'file', path:path, displayName:f});
+  renderAttachments(); autoGrow(ta); ta.focus(); toggleSend();
 }
 function quickAsk(text){
   const input = document.getElementById('input');

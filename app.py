@@ -223,6 +223,45 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def undo(self):
+        if not self.backend:
+            return {"ok": False, "error": "Backend not started"}
+        try:
+            return self._run(self.backend.undo())
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_perm_rules(self):
+        return {"ok": True, "rules": dict(self.backend.perm_rules) if self.backend else {}}
+
+    def set_perm_rules(self, rules):
+        if self.backend:
+            self.backend.set_perm_rules(rules)
+        return {"ok": True}
+
+    def list_files(self, query=""):
+        base = (self.backend.working_dir if self.backend and self.backend.working_dir
+                else os.path.expanduser("~"))
+        q = (query or "").lower()
+        out, scanned = [], 0
+        try:
+            for root, dirs, files in os.walk(base):
+                dirs[:] = [d for d in dirs if not d.startswith(".")][:40]
+                for f in files:
+                    scanned += 1
+                    if scanned > 4000:
+                        return {"ok": True, "base": base, "files": out}
+                    if f.startswith("."):
+                        continue
+                    rel = os.path.relpath(os.path.join(root, f), base)
+                    if q in rel.lower():
+                        out.append(rel.replace(os.sep, "/"))
+                        if len(out) >= 25:
+                            return {"ok": True, "base": base, "files": out}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+        return {"ok": True, "base": base, "files": out}
+
     def get_usage(self):
         if not self.backend:
             return {"ok": False, "error": "Backend not started"}
