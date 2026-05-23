@@ -91,6 +91,10 @@
   .chat-item svg{width:14px;height:14px;fill:currentColor;flex-shrink:0;opacity:.7}
   .chat-item:hover{background:var(--bg-elev)}
   .chat-item.active{background:var(--bg-elev-2);color:var(--text)}
+  .chat-item .ci-title{flex:1;overflow:hidden;text-overflow:ellipsis}
+  .ci-del{opacity:0;color:var(--text-dim);font-size:15px;line-height:1;padding:0 2px;flex-shrink:0}
+  .chat-item:hover .ci-del{opacity:.6}
+  .ci-del:hover{opacity:1;color:var(--text)}
   .sidebar-footer{
     border-top:1px solid var(--border-soft);padding:10px 12px;display:flex;align-items:center;gap:10px;
   }
@@ -128,7 +132,8 @@
   .model-select svg{width:13px;height:13px;fill:var(--text-dim);transition:transform .15s}
   .model-dropdown{position:relative}
   .model-dropdown.open .model-select svg{transform:rotate(180deg)}
-  .model-menu{position:absolute;bottom:calc(100% + 6px);right:0;left:auto;min-width:210px;
+  .model-menu{position:absolute;bottom:calc(100% + 6px);right:0;left:auto;
+    width:max-content;min-width:150px;max-width:300px;
     background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;padding:4px;
     z-index:50;box-shadow:0 8px 28px rgba(0,0,0,.45);display:none;max-height:340px;overflow-y:auto}
   .model-dropdown.open .model-menu{display:block}
@@ -173,6 +178,12 @@
   .m-content p:last-child{margin-bottom:0}
   .m-content code.inline{background:var(--bg-elev-2);border:1px solid var(--border-soft);
     border-radius:5px;padding:1px 5px;font-family:var(--mono);font-size:12.5px}
+  .m-content h3{font-size:17px;font-weight:600;margin:14px 0 6px}
+  .m-content h4{font-size:15px;font-weight:600;margin:12px 0 5px}
+  .m-content h5,.m-content h6{font-size:13.5px;font-weight:600;margin:10px 0 4px}
+  .m-content ul,.m-content ol{margin:6px 0 10px;padding-left:22px}
+  .m-content li{margin:3px 0}
+  .m-content em{font-style:italic}
 
   /* code block */
   .codeblock{border:1px solid var(--border);border-radius:8px;overflow:hidden;margin:10px 0;background:var(--code-bg)}
@@ -196,9 +207,28 @@
   .composer-wrap{padding:0 24px 20px;flex-shrink:0}
   .composer-inner{max-width:760px;margin:0 auto}
   .composer{
+    position:relative;
     border:1px solid var(--border);border-radius:14px;background:var(--bg-elev);
     padding:10px 12px;display:flex;flex-direction:column;gap:8px;transition:border-color .12s;
   }
+  /* attachment chips */
+  .attachments{display:flex;flex-wrap:wrap;gap:6px}
+  .attachments:empty{display:none}
+  .chip{display:inline-flex;align-items:center;gap:6px;background:var(--bg-elev-2);
+    border:1px solid var(--border-soft);border-radius:6px;padding:3px 8px;font-size:12px;color:var(--text)}
+  .chip svg{width:11px;height:11px;fill:currentColor;opacity:.7}
+  .chip .x{cursor:pointer;color:var(--text-dim);font-size:13px;line-height:1}
+  .chip .x:hover{color:var(--text)}
+  .msg-atts{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px}
+  /* slash-command autocomplete */
+  .slash-menu{position:absolute;left:0;bottom:calc(100% + 8px);min-width:250px;
+    background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;padding:4px;
+    display:none;z-index:60;box-shadow:0 8px 28px rgba(0,0,0,.45);max-height:280px;overflow-y:auto}
+  .slash-menu.open{display:block}
+  .slash-opt{display:flex;gap:10px;align-items:baseline;padding:7px 10px;border-radius:7px;cursor:pointer}
+  .slash-opt.sel,.slash-opt:hover{background:var(--bg-elev-2)}
+  .slash-cmd{font-family:var(--mono);font-size:12.5px;color:var(--accent)}
+  .slash-desc{font-size:12px;color:var(--text-dim)}
   .composer:focus-within{border-color:var(--accent)}
   .composer textarea{
     background:transparent;border:none;outline:none;color:var(--text);resize:none;
@@ -218,6 +248,8 @@
   .send-btn:hover{background:var(--accent-hover)}
   .send-btn:disabled{background:var(--bg-elev-2);color:var(--text-faint);cursor:not-allowed}
   .send-btn svg{width:16px;height:16px;fill:currentColor}
+  .send-btn.stop{background:#da3633}
+  .send-btn.stop:hover{background:#e5534b}
   .composer-hint{text-align:center;font-size:11px;color:var(--text-faint);margin-top:8px}
 
   .thread::-webkit-scrollbar,.chat-list::-webkit-scrollbar{width:8px}
@@ -322,12 +354,14 @@
       <div class="composer-wrap">
         <div class="composer-inner">
           <div class="composer">
-            <textarea id="input" rows="1" placeholder="Ask Copilot anything about your code…"
-              oninput="autoGrow(this);toggleSend()" onkeydown="onKey(event)"></textarea>
+            <div class="slash-menu" id="slashMenu"></div>
+            <div class="attachments" id="attachments"></div>
+            <textarea id="input" rows="1" placeholder="Ask Copilot anything about your code…  (type / for commands)"
+              oninput="autoGrow(this);toggleSend();updateSlash()" onkeydown="onKey(event)"></textarea>
             <div class="composer-row">
               <div class="composer-tools">
-                <div class="ctool" title="Attach file"><svg viewBox="0 0 16 16"><path d="M9.6 2.4a3 3 0 014.2 4.2l-6 6a1.9 1.9 0 01-2.7-2.7l5.3-5.3a.75.75 0 011 1l-5.3 5.3a.4.4 0 00.6.6l6-6a1.5 1.5 0 00-2.1-2.1l-6 6a2.6 2.6 0 003.7 3.7l5.3-5.3a.75.75 0 011 1l-5.3 5.3a4.1 4.1 0 01-5.8-5.8l6-6z"/></svg></div>
-                <div class="ctool" title="Add code context"><svg viewBox="0 0 16 16"><path d="M5.5 4.3 1.8 8l3.7 3.7-1 1L0 8l4.5-4.5zM10.5 11.7 14.2 8l-3.7-3.7 1-1L16 8l-4.5 4.5z"/></svg></div>
+                <div class="ctool" title="Attach file" onclick="attachFile()"><svg viewBox="0 0 16 16"><path d="M9.6 2.4a3 3 0 014.2 4.2l-6 6a1.9 1.9 0 01-2.7-2.7l5.3-5.3a.75.75 0 011 1l-5.3 5.3a.4.4 0 00.6.6l6-6a1.5 1.5 0 00-2.1-2.1l-6 6a2.6 2.6 0 003.7 3.7l5.3-5.3a.75.75 0 011 1l-5.3 5.3a4.1 4.1 0 01-5.8-5.8l6-6z"/></svg></div>
+                <div class="ctool" title="Insert code block" onclick="insertCodeBlock()"><svg viewBox="0 0 16 16"><path d="M5.5 4.3 1.8 8l3.7 3.7-1 1L0 8l4.5-4.5zM10.5 11.7 14.2 8l-3.7-3.7 1-1L16 8l-4.5 4.5z"/></svg></div>
               </div>
               <div class="composer-right">
                 <div class="model-dropdown" id="modelDropdown">
@@ -337,7 +371,7 @@
                   </div>
                   <div class="model-menu" id="modelMenu"></div>
                 </div>
-                <button class="send-btn" id="send" disabled onclick="sendMessage()">
+                <button class="send-btn" id="send" disabled onclick="onSendOrStop()">
                   <svg viewBox="0 0 16 16"><path d="M1.5 8 14 2 9.5 8 14 14z"/></svg>
                 </button>
               </div>
@@ -415,6 +449,7 @@ async function initBackend(){
         document.getElementById('modelName').textContent = MODELS[0];
       }
       await loadConversations();
+      await loadCommands();
       newChat();
     } else {
       setStatus('err');
@@ -462,6 +497,8 @@ function selectModel(i){
 document.addEventListener('click', (e)=>{
   const dd = document.getElementById('modelDropdown');
   if(dd && !dd.contains(e.target)) dd.classList.remove('open');
+  const comp = document.querySelector('.composer');
+  if(comp && !comp.contains(e.target)) closeSlash();
 });
 
 // ===== Conversation state / history =====
@@ -489,7 +526,14 @@ function renderSidebar(){
   const icon = '<svg viewBox="0 0 16 16"><path d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 01.75.75v8.5a.75.75 0 01-.75.75H5.56l-2.78 2.78A.75.75 0 011.5 14.25V2.75z"/></svg>';
   list.innerHTML = conversations.map(c=>
     `<div class="chat-item ${c.id===currentConvId?'active':''}" title="${escapeAttr(c.title)}" onclick="openConversation('${c.id}')">
-       ${icon}<span>${escapeHtml(c.title)}</span></div>`).join('');
+       ${icon}<span class="ci-title">${escapeHtml(c.title)}</span>
+       <span class="ci-del" title="Delete conversation" onclick="event.stopPropagation();deleteConversation('${c.id}')">&times;</span></div>`).join('');
+}
+async function deleteConversation(id){
+  if(!backendReady) return;
+  try{ await window.pywebview.api.delete_conversation(id); }catch(e){}
+  if(id === currentConvId) newChat();
+  await loadConversations();
 }
 
 async function persistCurrent(){
@@ -513,7 +557,7 @@ async function openConversation(id){
   const inner = document.getElementById('threadInner');
   inner.innerHTML = '';
   currentMessages.forEach(m=>{
-    if(m.role === 'user') addUserMessage(m.content, true);
+    if(m.role === 'user') addUserMessage(m.content, true, m.attachments);
     else { const t = assistantShell(); t.innerHTML = renderMarkdown(m.content); }
   });
   renderSidebar();
@@ -597,10 +641,91 @@ async function clearHistory(){
 function autoGrow(el){ el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,160)+'px'; }
 function toggleSend(){
   const v = document.getElementById('input').value.trim();
-  document.getElementById('send').disabled = v.length===0;
+  document.getElementById('send').disabled = (v.length===0 && pendingAttachments.length===0);
 }
 function onKey(e){
+  if(slashOpen){
+    if(e.key==='ArrowDown'){ e.preventDefault(); slashIdx=(slashIdx+1)%slashItems.length; updateSlashHighlight(); return; }
+    if(e.key==='ArrowUp'){ e.preventDefault(); slashIdx=(slashIdx-1+slashItems.length)%slashItems.length; updateSlashHighlight(); return; }
+    if(e.key==='Enter' || e.key==='Tab'){ e.preventDefault(); pickSlash(slashIdx); return; }
+    if(e.key==='Escape'){ closeSlash(); return; }
+  }
   if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); sendMessage(); }
+}
+
+// ===== Attachments =====
+let pendingAttachments = [];  // [{type:'file', path, displayName}]
+function clipSvg(){ return '<svg viewBox="0 0 16 16"><path d="M9.6 2.4a3 3 0 014.2 4.2l-6 6a1.9 1.9 0 01-2.7-2.7l5.3-5.3a.75.75 0 011 1l-5.3 5.3a.4.4 0 00.6.6l6-6a1.5 1.5 0 00-2.1-2.1l-6 6a2.6 2.6 0 003.7 3.7l5.3-5.3a.75.75 0 011 1l-5.3 5.3a4.1 4.1 0 01-5.8-5.8l6-6z"/></svg>'; }
+function renderAttachments(){
+  document.getElementById('attachments').innerHTML = pendingAttachments.map((a,i)=>
+    `<span class="chip">${clipSvg()}${escapeHtml(a.displayName)}<span class="x" onclick="removeAttachment(${i})">&times;</span></span>`).join('');
+}
+function removeAttachment(i){ pendingAttachments.splice(i,1); renderAttachments(); toggleSend(); }
+async function attachFile(){
+  if(!backendReady) return;            // file picker comes from the desktop shell
+  let f; try{ f = await window.pywebview.api.pick_file(); }catch(e){ return; }
+  if(f && f.path){
+    pendingAttachments.push({type:'file', path:f.path, displayName:f.name});
+    renderAttachments(); toggleSend();
+  }
+}
+function insertCodeBlock(){
+  const ta = document.getElementById('input');
+  const open='```\n', close='\n```';
+  const s=ta.selectionStart||0, e=ta.selectionEnd||0, val=ta.value, sel=val.slice(s,e);
+  ta.value = val.slice(0,s)+open+sel+close+val.slice(e);
+  const pos = s+open.length+sel.length;
+  ta.focus(); ta.setSelectionRange(pos,pos);
+  autoGrow(ta); toggleSend();
+}
+
+// ===== Slash-command autocomplete (Copilot's own commands) =====
+let SLASH = [];                 // populated live from Copilot's commands.changed
+let commandsLoaded = false;
+let slashOpen=false, slashItems=[], slashIdx=0;
+async function loadCommands(){
+  if(!backendReady) return;
+  try{
+    const cmds = (await window.pywebview.api.get_commands()) || [];
+    SLASH = cmds.map(c=>({
+      cmd: c.name.startsWith('/') ? c.name : ('/' + c.name),
+      desc: c.description || ''
+    }));
+    commandsLoaded = SLASH.length > 0;
+  }catch(e){ /* leave SLASH as-is */ }
+}
+function closeSlash(){ document.getElementById('slashMenu').classList.remove('open'); slashOpen=false; }
+function updateSlash(){
+  const v = document.getElementById('input').value;
+  const box = document.getElementById('slashMenu');
+  if(v.startsWith('/') && !v.includes(' ') && !v.includes('\n')){
+    // commands.changed may arrive shortly after connect; refresh lazily once.
+    if(!commandsLoaded && backendReady){
+      loadCommands().then(()=>{ if(document.getElementById('input').value === v) updateSlash(); });
+    }
+    const q = v.toLowerCase();
+    slashItems = SLASH.filter(c=>c.cmd.toLowerCase().startsWith(q));
+    if(slashItems.length){
+      if(slashIdx >= slashItems.length) slashIdx = 0;
+      box.innerHTML = slashItems.map((c,i)=>
+        `<div class="slash-opt ${i===slashIdx?'sel':''}" onmousedown="event.preventDefault();pickSlash(${i})">
+           <span class="slash-cmd">${escapeHtml(c.cmd)}</span><span class="slash-desc">${escapeHtml(c.desc)}</span></div>`).join('');
+      box.classList.add('open'); slashOpen = true; return;
+    }
+  }
+  closeSlash();
+}
+function updateSlashHighlight(){
+  document.querySelectorAll('#slashMenu .slash-opt').forEach((el,i)=>el.classList.toggle('sel', i===slashIdx));
+}
+function pickSlash(i){
+  const c = slashItems[i]; if(!c) return;
+  closeSlash();
+  const input = document.getElementById('input');
+  // Copilot commands are sent to the agent — drop it in the box so the user can
+  // add arguments, then Enter sends it.
+  input.value = c.cmd + ' ';
+  autoGrow(input); input.focus(); toggleSend();
 }
 function quickAsk(text){
   const input = document.getElementById('input');
@@ -616,14 +741,19 @@ function newChat(){
 
 function escapeHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
-function addUserMessage(text){
+function addUserMessage(text, _replay, attNames){
   const inner = document.getElementById('threadInner');
   if(!started){ inner.innerHTML=''; started=true; }
   const div = document.createElement('div');
   div.className='msg user';
+  let atts = '';
+  if(attNames && attNames.length){
+    atts = '<div class="msg-atts">' +
+      attNames.map(n=>`<span class="chip">${clipSvg()}${escapeHtml(n)}</span>`).join('') + '</div>';
+  }
   div.innerHTML = `<div class="m-avatar">RX</div>
     <div class="m-body"><div class="m-name">You</div>
-    <div class="m-content"><p>${escapeHtml(text)}</p></div></div>`;
+    <div class="m-content">${text ? `<p>${escapeHtml(text)}</p>` : ''}${atts}</div></div>`;
   inner.appendChild(div);
   scrollDown();
 }
@@ -682,10 +812,13 @@ function renderCode(lines){
 function sendMessage(){
   const input = document.getElementById('input');
   const text = input.value.trim();
-  if(!text) return;
-  addUserMessage(text);
-  currentMessages.push({role:'user', content:text});
-  input.value=''; autoGrow(input); toggleSend();
+  const atts = pendingAttachments.slice();
+  if(!text && !atts.length) return;
+  const attNames = atts.map(a=>a.displayName);
+  addUserMessage(text, false, attNames);
+  currentMessages.push({role:'user', content:text, attachments:attNames});
+  input.value=''; autoGrow(input);
+  pendingAttachments = []; renderAttachments(); toggleSend();
 
   const target = assistantShell();
   target.innerHTML = '<p><span class="cursor-blink"></span></p>';
@@ -693,11 +826,39 @@ function sendMessage(){
   if(backendReady){
     // Real Copilot. Deltas arrive via window.onCopilotDelta().
     curTarget = target; curBuf = "";
-    window.pywebview.api.send(text);
+    setStreaming(true);
+    window.pywebview.api.send(text, atts);
   } else {
     // Demo fallback (no backend present).
     setTimeout(()=>streamText(target, buildReply()), 450);
   }
+}
+
+// ===== Send / Stop =====
+let streaming = false;
+function onSendOrStop(){ if(streaming) stopStreaming(); else sendMessage(); }
+function setStreaming(on){
+  streaming = on;
+  const b = document.getElementById('send');
+  if(on){
+    b.classList.add('stop'); b.disabled = false;
+    b.innerHTML = '<svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/></svg>';
+  } else {
+    b.classList.remove('stop');
+    b.innerHTML = '<svg viewBox="0 0 16 16"><path d="M1.5 8 14 2 9.5 8 14 14z"/></svg>';
+    toggleSend();
+  }
+}
+function stopStreaming(){
+  if(backendReady){ try{ window.pywebview.api.abort(); }catch(e){} }
+  if(curTarget){
+    const raw = curBuf;
+    curTarget.innerHTML = raw.trim() ? renderMarkdown(raw) : '<p class="set-val">(stopped)</p>';
+    if(raw.trim()) currentMessages.push({role:'assistant', content:raw});
+    persistCurrent();
+    curTarget = null; curBuf = "";
+  }
+  setStreaming(false);
 }
 
 // ===== Streaming callbacks invoked by app.py =====
@@ -713,6 +874,7 @@ function onCopilotDelta(chunk){
   scrollDown();
 }
 function onCopilotDone(){
+  setStreaming(false);
   if(!curTarget) return;
   const raw = curBuf;
   curTarget.innerHTML = renderMarkdown(raw);
@@ -722,6 +884,7 @@ function onCopilotDone(){
   scrollDown();
 }
 function onCopilotError(msg){
+  setStreaming(false);
   if(curTarget){
     curTarget.innerHTML = `<p style="color:#ff7b72">⚠ ${escapeHtml(msg)}</p>`;
     curTarget = null; curBuf = "";
@@ -750,17 +913,36 @@ function renderMarkdown(md){
         <span class="cb-copy" onclick="copyCode(this)"><svg viewBox="0 0 16 16"><path d="M5 2a2 2 0 00-2 2v7h1.5V4A.5.5 0 015 3.5h6V2H5z"/><path d="M7 5a2 2 0 00-2 2v6a2 2 0 002 2h5a2 2 0 002-2V7a2 2 0 00-2-2H7zm-.5 2A.5.5 0 017 6.5h5a.5.5 0 01.5.5v6a.5.5 0 01-.5.5H7a.5.5 0 01-.5-.5V7z"/></svg>Copy</span></div>
         <pre>${body}</pre></div>`;
     } else {
-      seg.split(/\n{2,}/).forEach(para=>{
-        if(!para.trim()) return;
-        let t = escapeHtml(para)
-          .replace(/`([^`]+)`/g,'<code class="inline">$1</code>')
-          .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
-          .replace(/\n/g,'<br>');
-        html += `<p>${t}</p>`;
-      });
+      html += renderTextBlock(seg);
     }
   });
   return html || '<p></p>';
+}
+function inlineMd(s){
+  return escapeHtml(s)
+    .replace(/`([^`]+)`/g,'<code class="inline">$1</code>')
+    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>');
+}
+function renderTextBlock(text){
+  const lines = text.split('\n');
+  let html='', para=[], listType=null, listBuf=[];
+  const flushPara=()=>{ if(para.length){ html+=`<p>${para.map(inlineMd).join('<br>')}</p>`; para=[]; } };
+  const flushList=()=>{ if(listType){ html+=`<${listType}>`+listBuf.map(li=>`<li>${inlineMd(li)}</li>`).join('')+`</${listType}>`; listType=null; listBuf=[]; } };
+  lines.forEach(raw=>{
+    const line = raw.replace(/\s+$/,'');
+    let m;
+    if(!line.trim()){ flushPara(); flushList(); return; }
+    if((m=line.match(/^(#{1,6})\s+(.*)$/))){ flushPara(); flushList();
+      const lvl=Math.min(6, m[1].length+2); html+=`<h${lvl}>${inlineMd(m[2])}</h${lvl}>`; return; }
+    if((m=line.match(/^\s*[-*+]\s+(.*)$/))){ flushPara(); if(listType&&listType!=='ul') flushList();
+      listType='ul'; listBuf.push(m[1]); return; }
+    if((m=line.match(/^\s*\d+\.\s+(.*)$/))){ flushPara(); if(listType&&listType!=='ol') flushList();
+      listType='ol'; listBuf.push(m[1]); return; }
+    flushList(); para.push(line);
+  });
+  flushPara(); flushList();
+  return html;
 }
 function escapeAttr(s){ return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 

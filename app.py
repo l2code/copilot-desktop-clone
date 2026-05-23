@@ -104,15 +104,35 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
-    def send(self, prompt: str):
+    def send(self, prompt: str, attachments=None):
         if not self.backend:
             return {"ok": False, "error": "Backend not started"}
         try:
-            self._run(self.backend.send(prompt))
+            self._run(self.backend.send(prompt, attachments))
             return {"ok": True}
         except Exception as e:
             self._js("onCopilotError", str(e))
             return {"ok": False, "error": str(e)}
+
+    def abort(self):
+        if not self.backend:
+            return {"ok": False, "error": "Backend not started"}
+        try:
+            self._run(self.backend.abort())
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def pick_file(self):
+        """Open a native file picker and return the chosen file (no admin needed)."""
+        if not self.window:
+            return None
+        dialog_open = getattr(getattr(webview, "FileDialog", None), "OPEN", 10)
+        res = self.window.create_file_dialog(dialog_open, allow_multiple=False)
+        if not res:
+            return None
+        path = res[0] if isinstance(res, (list, tuple)) else res
+        return {"path": path, "name": os.path.basename(path)}
 
     def set_model(self, model: str, reasoning: str | None = None):
         if not self.backend:
@@ -122,6 +142,10 @@ class Api:
             return {"ok": True}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+    def get_commands(self):
+        """Copilot slash commands captured from commands.changed events."""
+        return self.backend.commands if self.backend else []
 
     def get_usage(self):
         if not self.backend:

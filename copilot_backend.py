@@ -41,6 +41,7 @@ class CopilotBackend:
         self._on_done = None
         self._on_error = None
         self.last_quota = None  # latest quota seen via assistant.usage events
+        self.commands = []      # Copilot slash commands from commands.changed events
 
     def set_handlers(self, on_delta, on_done, on_error):
         """Register UI callbacks. on_delta(text), on_done(), on_error(msg)."""
@@ -81,6 +82,12 @@ class CopilotBackend:
                 snaps = getattr(event.data, "quota_snapshots", None)
                 if snaps:
                     self.last_quota = self._snaps_to_dict(snaps)
+            elif t == SessionEventType.COMMANDS_CHANGED:
+                cmds = getattr(event.data, "commands", None) or []
+                self.commands = [
+                    {"name": c.name, "description": getattr(c, "description", None)}
+                    for c in cmds
+                ]
             elif t == SessionEventType.SESSION_ERROR:
                 msg = getattr(event.data, "message", None) or str(event.data)
                 if self._on_error:
@@ -106,10 +113,17 @@ class CopilotBackend:
             }
         return out
 
-    async def send(self, prompt: str):
+    async def abort(self):
+        """Cancel the in-flight assistant turn (Stop button)."""
+        if self.session:
+            await self.session.abort()
+
+    async def send(self, prompt: str, attachments=None):
         if not self.session:
             raise RuntimeError("Session not started -- call start() first.")
-        await self.session.send(prompt)
+        # attachments: list of {"type":"file","path":...,"displayName":...} dicts,
+        # which match the SDK's FileAttachment TypedDict at runtime.
+        await self.session.send(prompt, attachments=attachments or None)
 
     async def list_models(self):
         if not self.client:
