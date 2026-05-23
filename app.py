@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
 import threading
 
@@ -20,6 +21,12 @@ import threading
 os.environ.setdefault("QT_API", "pyqt6")
 
 import webview
+
+# pywebview's Windows (WinForms) backend logs the native window object at
+# startup; pythonnet's repr of its AccessibilityObject recurses infinitely
+# ("...Empty.Empty.Empty... maximum recursion depth exceeded"). The app is
+# unaffected -- raising the logger level stops that record from being formatted.
+logging.getLogger("pywebview").setLevel(logging.CRITICAL)
 
 from copilot_backend import CopilotBackend
 
