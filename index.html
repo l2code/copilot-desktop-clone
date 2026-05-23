@@ -795,20 +795,35 @@ function insertCodeBlock(){
 // App commands always work; any commands Copilot registers (commands.changed)
 // get merged in. The SDK does not expose the CLI's built-in REPL slash commands
 // for a plain session, so these app commands are the reliable baseline.
-const APP_COMMANDS = [
-  {cmd:'/new',       desc:'Start a new chat',          run:()=>newChat()},
-  {cmd:'/clear',     desc:'Clear this chat',           run:()=>newChat()},
-  {cmd:'/model',     desc:'Choose the model',          run:()=>openModelMenu()},
-  {cmd:'/attach',    desc:'Attach a file',             run:()=>attachFile()},
-  {cmd:'/code',      desc:'Insert a code block',       run:()=>insertCodeBlock()},
-  {cmd:'/stop',      desc:'Stop the current response', run:()=>{ if(streaming) stopStreaming(); }},
-  {cmd:'/search',    desc:'Search your chats',         run:()=>{ const e=document.getElementById('chatSearch'); if(e) e.focus(); }},
-  {cmd:'/sidebar',   desc:'Toggle the sidebar',        run:()=>toggleSidebar()},
-  {cmd:'/usage',     desc:'Show Copilot usage',        run:()=>openUsage()},
-  {cmd:'/settings',  desc:'Open settings',             run:()=>openSettings()},
-  {cmd:'/help',      desc:'List slash commands',       run:()=>showSlashHelp()},
+// Sourced from GitHub's Copilot CLI slash-command docs. Commands with `run` are
+// handled locally in this app; the rest are inserted in the composer and sent to
+// Copilot (the agent handles those it supports). Terminal-only CLI commands
+// (/theme, /terminal-setup, /keep-alive, ...) are omitted as N/A in a GUI.
+// The CLI's exact set varies by version; live-registered commands are merged in.
+const SLASH_DEFS = [
+  {cmd:'/new',      desc:'Start a new conversation',       run:()=>newChat()},
+  {cmd:'/clear',    desc:'Start a new conversation',       run:()=>newChat()},
+  {cmd:'/reset',    desc:'Start a new conversation',       run:()=>newChat()},
+  {cmd:'/model',    desc:'Select the AI model',            run:()=>openModelMenu()},
+  {cmd:'/usage',    desc:'Show usage & quota',             run:()=>openUsage()},
+  {cmd:'/copy',     desc:'Copy the last response',         run:()=>copyLastResponse()},
+  {cmd:'/share',    desc:'Copy conversation as Markdown',  run:()=>copyConversationMd()},
+  {cmd:'/export',   desc:'Copy conversation as Markdown',  run:()=>copyConversationMd()},
+  {cmd:'/search',   desc:'Search your chats',              run:()=>{ const e=document.getElementById('chatSearch'); if(e) e.focus(); }},
+  {cmd:'/settings', desc:'Open settings',                  run:()=>openSettings()},
+  {cmd:'/help',     desc:'List slash commands',            run:()=>showSlashHelp()},
+  {cmd:'/plan',     desc:'Create an implementation plan  (sent to Copilot)'},
+  {cmd:'/review',   desc:'Code-review the changes  (sent to Copilot)'},
+  {cmd:'/research', desc:'Deep research via GitHub + web  (sent to Copilot)'},
+  {cmd:'/delegate', desc:'Delegate changes as an AI pull request  (sent to Copilot)'},
+  {cmd:'/pr',       desc:'Manage pull requests for the branch  (sent to Copilot)'},
+  {cmd:'/diff',     desc:'Review changes in the directory  (sent to Copilot)'},
+  {cmd:'/fleet',    desc:'Run parts of a task in parallel  (sent to Copilot)'},
+  {cmd:'/compact',  desc:'Summarize history to save context  (sent to Copilot)'},
+  {cmd:'/ask',      desc:'Ask a side question  (sent to Copilot)'},
+  {cmd:'/init',     desc:'Initialize Copilot for this repo  (sent to Copilot)'},
 ];
-let SLASH = APP_COMMANDS.slice();
+let SLASH = SLASH_DEFS.slice();
 let commandsLoaded = false;
 let slashOpen=false, slashItems=[], slashIdx=0;
 async function loadCommands(){
@@ -819,9 +834,20 @@ async function loadCommands(){
       live = cmds.map(c=>({ cmd: c.name.startsWith('/') ? c.name : ('/' + c.name), desc: c.description || '' }));
     }catch(e){ /* ignore */ }
   }
-  const have = new Set(APP_COMMANDS.map(c=>c.cmd));
-  SLASH = APP_COMMANDS.concat(live.filter(c=>!have.has(c.cmd)));
+  const have = new Set(SLASH_DEFS.map(c=>c.cmd));
+  SLASH = SLASH_DEFS.concat(live.filter(c=>!have.has(c.cmd)));
   commandsLoaded = true;
+}
+function copyLastResponse(){
+  for(let i=currentMessages.length-1;i>=0;i--){
+    if(currentMessages[i].role==='assistant'){
+      if(navigator.clipboard) navigator.clipboard.writeText(currentMessages[i].content||''); return;
+    }
+  }
+}
+function copyConversationMd(){
+  const md = currentMessages.map(m=>(m.role==='user'?'**You:** ':'**Copilot:** ')+(m.content||'')).join('\n\n');
+  if(navigator.clipboard) navigator.clipboard.writeText(md);
 }
 function showSlashHelp(){
   const inner = document.getElementById('threadInner');
