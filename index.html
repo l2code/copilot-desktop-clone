@@ -683,6 +683,52 @@ document.addEventListener('click', (e)=>{
   const md = document.getElementById('modeDD');
   if(md && !md.contains(e.target)) md.classList.remove('open');
 });
+
+// ===== Keyboard shortcuts =====
+function closeTopOverlay(){
+  if(slashOpen){ closeSlash(); return true; }
+  if(atOpen){ closeAt(); return true; }
+  const dd = document.getElementById('modelDropdown');
+  if(dd && dd.classList.contains('open')){ dd.classList.remove('open'); return true; }
+  const mdd = document.getElementById('modeDD');
+  if(mdd && mdd.classList.contains('open')){ mdd.classList.remove('open'); return true; }
+  const pm = document.getElementById('permModal');
+  if(pm && pm.classList.contains('open')){ resolvePerm('reject'); return true; }  // Esc on a permission prompt = reject
+  for(const id of ['customizeModal','usageModal','settingsModal']){
+    const m = document.getElementById(id);
+    if(m && m.classList.contains('open')){ m.classList.remove('open'); return true; }
+  }
+  const sp = document.getElementById('sidePanel');
+  if(sp && sp.classList.contains('open')){ sp.classList.remove('open'); return true; }
+  return false;
+}
+document.addEventListener('keydown', (e)=>{
+  const mod = e.ctrlKey || e.metaKey;
+  if(e.key === 'Escape'){ if(closeTopOverlay()) e.preventDefault(); return; }
+  if(mod && e.key === 'Enter'){
+    if(e.target && e.target.id === 'input') return;   // composer's own handler sends it
+    e.preventDefault();
+    const b = document.getElementById('send'); if(b && !b.disabled) onSendOrStop();
+    return;
+  }
+  if(mod && (e.key === 'n' || e.key === 'N')){ e.preventDefault(); newChat(); return; }
+  if(mod && (e.key === 'k' || e.key === 'K')){
+    e.preventDefault();
+    const s = document.getElementById('chatSearch'); if(s){ s.focus(); s.select(); }
+    return;
+  }
+  // Up-arrow in an empty composer recalls the last message for editing/resend.
+  if(e.key === 'ArrowUp' && e.target && e.target.id === 'input'
+     && !e.target.value.trim() && !slashOpen && !atOpen){
+    const last = [...currentMessages].reverse().find(m=>m.role==='user');
+    if(last){
+      e.preventDefault();
+      e.target.value = last.content; autoGrow(e.target); toggleSend();
+      e.target.setSelectionRange(e.target.value.length, e.target.value.length);
+    }
+    return;
+  }
+});
 (function(){
   const t = document.getElementById('thread');
   if(!t) return;
