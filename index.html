@@ -298,6 +298,11 @@
   .foot-item:hover{border-color:var(--border);color:var(--text);background:var(--bg-elev)}
   .foot-item svg{width:13px;height:13px;fill:currentColor;flex-shrink:0}
   .foot-item span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ctx-item{display:none;gap:6px}
+  .ctx-bar{width:46px;height:5px;border-radius:3px;background:var(--bg);border:1px solid var(--border-soft);overflow:hidden;display:inline-block}
+  .ctx-fill{display:block;height:100%;width:0;background:var(--accent);transition:width .3s}
+  .ctx-fill.warn{background:#e3b341}
+  .ctx-fill.full{background:#da3633}
   .foot-dd{position:relative}
   .foot-menu{position:absolute;bottom:calc(100% + 6px);left:0;min-width:250px;background:var(--bg-elev);
     border:1px solid var(--border);border-radius:10px;padding:4px;display:none;z-index:60;
@@ -492,6 +497,10 @@
                 <svg viewBox="0 0 16 16"><path d="M4.5 6l3.5 3.5L11.5 6z"/></svg>
               </button>
               <div class="foot-menu" id="modeMenu"></div>
+            </div>
+            <div class="foot-item ctx-item" id="ctxItem" onclick="doCompact()" title="Context-window usage \u2014 click to compact">
+              <span id="ctxLabel">Context</span>
+              <span class="ctx-bar"><span class="ctx-fill" id="ctxFill"></span></span>
             </div>
           </div>
         </div>
@@ -880,6 +889,22 @@ async function openConversation(id){
 
 // ===== Top-bar buttons =====
 function toggleSidebar(){ document.querySelector('.sidebar').classList.toggle('collapsed'); }
+function onContextUsage(cur, lim){
+  if(!lim){ return; }
+  const item = document.getElementById('ctxItem'); if(!item) return;
+  const pct = Math.max(0, Math.min(100, Math.round((cur||0)/lim*100)));
+  item.style.display = 'flex';
+  document.getElementById('ctxLabel').textContent = 'Context ' + pct + '%';
+  const fill = document.getElementById('ctxFill');
+  fill.style.width = pct + '%';
+  fill.className = 'ctx-fill' + (pct>=90 ? ' full' : (pct>=70 ? ' warn' : ''));
+}
+async function doCompact(){
+  if(!backendReady) return;
+  flashBanner('Compacting conversation\u2026');
+  try{ await window.pywebview.api.compact(); }catch(e){}
+  flashBanner('Conversation compacted');
+}
 
 // ===== Working folder (what Copilot can read / run commands in) =====
 function setWdDisplay(path){
@@ -1486,7 +1511,9 @@ function actSvg(kind){
   return '<svg viewBox="0 0 16 16"><path d="M1 3.5A1.5 1.5 0 012.5 2h11A1.5 1.5 0 0115 3.5v9A1.5 1.5 0 0113.5 14h-11A1.5 1.5 0 011 12.5v-9zM4 6l2 2-2 2 .9.9L7.8 8 4.9 5.1zm4.5 3.5h3V11h-3z"/></svg>';
 }
 function onCopilotActivity(d){
-  if(!curTarget || !d) return;
+  if(!d) return;
+  if(d.kind === 'context'){ onContextUsage(d.current, d.limit); return; }
+  if(!curTarget) return;
   const { act } = ensureStream();
   if(d.kind==='reasoning_delta'){
     let think = act.querySelector('.thinking');

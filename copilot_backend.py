@@ -299,6 +299,12 @@ class CopilotBackend:
             elif t == SessionEventType.COMMAND_EXECUTE:
                 if self._on_activity:
                     self._on_activity({"kind": "command", "cmd": getattr(event.data, "command", ""), "name": getattr(event.data, "command_name", "")})
+            elif t == SessionEventType.SESSION_USAGE_INFO:
+                d = event.data
+                if self._on_activity:
+                    self._on_activity({"kind": "context",
+                                       "current": getattr(d, "current_tokens", None),
+                                       "limit": getattr(d, "token_limit", None)})
             elif t == SessionEventType.SESSION_ERROR:
                 msg = getattr(event.data, "message", None) or str(event.data)
                 if self._on_error:
@@ -328,6 +334,11 @@ class CopilotBackend:
         """Cancel the in-flight assistant turn (Stop button)."""
         if self.session:
             await self.session.abort()
+
+    async def compact(self):
+        """Summarize history to reduce context-window usage (CLI /compact)."""
+        if self.session:
+            await self.session.rpc.history.compact()
 
     async def send(self, prompt: str, attachments=None):
         if not self.session:

@@ -126,6 +126,15 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def compact(self):
+        if not self.backend:
+            return {"ok": False, "error": "Backend not started"}
+        try:
+            self._run(self.backend.compact())
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def get_instructions(self):
         return {"ok": True, "text": self.backend.instructions if self.backend else ""}
 
