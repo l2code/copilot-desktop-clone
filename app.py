@@ -33,6 +33,30 @@ from copilot_backend import CopilotBackend
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = os.path.join(HERE, "index.html")
 
+# Conversations persist here so they survive restarts (kept out of the project
+# dir / git, under the user's home).
+HISTORY_DIR = os.path.join(os.path.expanduser("~"), ".copilot-desktop")
+HISTORY_FILE = os.path.join(HISTORY_DIR, "history.json")
+
+
+def _load_history() -> dict:
+    try:
+        with open(HISTORY_FILE, encoding="utf-8") as f:
+            data = json.load(f)
+            if isinstance(data, dict) and "conversations" in data:
+                return data
+    except Exception:
+        pass
+    return {"conversations": []}
+
+
+def _save_history(data: dict) -> None:
+    os.makedirs(HISTORY_DIR, exist_ok=True)
+    tmp = HISTORY_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, HISTORY_FILE)  # atomic write
+
 
 class Api:
     """Methods on this object are callable from JS as window.pywebview.api.*"""
@@ -90,14 +114,60 @@ class Api:
             self._js("onCopilotError", str(e))
             return {"ok": False, "error": str(e)}
 
-    def set_model(self, model: str):
+    def set_model(self, model: str, reasoning: str | None = None):
         if not self.backend:
             return {"ok": False, "error": "Backend not started"}
         try:
-            self._run(self.backend.set_model(model))
+            self._run(self.backend.set_model(model, reasoning))
             return {"ok": True}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+    # ----- conversation history (no backend required) -----
+
+    def list_conversations(self):
+        convs = sorted(
+            _load_history()["conversations"],
+            key=lambda c: c.get("updated", 0),
+            reverse=True,
+        )
+        return [
+            {"id": c["id"], "title": c.get("title", "Untitled"), "updated": c.get("updated", 0)}
+            for c in convs
+        ]
+
+    def get_conversation(self, conv_id: str):
+        for c in _load_history()["conversations"]:
+            if c["id"] == conv_id:
+                return c
+        return None
+
+    def save_conversation(self, conv_id: str, title: str, messages: list):
+        import time
+
+        data = _load_history()
+        now = time.time()
+        for c in data["conversations"]:
+            if c["id"] == conv_id:
+                c.update(title=title, messages=messages, updated=now)
+                break
+        else:
+            data["conversations"].append(
+                {"id": conv_id, "title": title, "messages": messages,
+                 "created": now, "updated": now}
+            )
+        _save_history(data)
+        return {"ok": True}
+
+    def delete_conversation(self, conv_id: str):
+        data = _load_history()
+        data["conversations"] = [c for c in data["conversations"] if c["id"] != conv_id]
+        _save_history(data)
+        return {"ok": True}
+
+    def clear_history(self):
+        _save_history({"conversations": []})
+        return {"ok": True}
 
 
 def main():

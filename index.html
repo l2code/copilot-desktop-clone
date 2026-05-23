@@ -110,7 +110,19 @@
     border-radius:8px;background:var(--bg-elev);font-size:13px;cursor:pointer;color:var(--text);
   }
   .model-select:hover{border-color:#484f58}
-  .model-select svg{width:13px;height:13px;fill:var(--text-dim)}
+  .model-select svg{width:13px;height:13px;fill:var(--text-dim);transition:transform .15s}
+  .model-dropdown{position:relative}
+  .model-dropdown.open .model-select svg{transform:rotate(180deg)}
+  .model-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:210px;
+    background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;padding:4px;
+    z-index:50;box-shadow:0 8px 28px rgba(0,0,0,.45);display:none;max-height:340px;overflow-y:auto}
+  .model-dropdown.open .model-menu{display:block}
+  .model-opt{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:7px;
+    font-size:13px;color:var(--text);cursor:pointer;white-space:nowrap}
+  .model-opt:hover{background:var(--bg-elev-2)}
+  .model-opt .check{width:14px;height:14px;flex-shrink:0;opacity:0}
+  .model-opt.sel .check{opacity:1}
+  .model-opt .check svg{width:14px;height:14px;fill:var(--accent)}
   .topbar-actions{display:flex;gap:4px}
   .icon-btn{width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;
     color:var(--text-dim);cursor:pointer}
@@ -207,6 +219,30 @@
   .banner.ok .dot{background:var(--green)}
   .banner.warn .dot{background:#e3b341}
   .banner.err .dot{background:#ff7b72}
+  /* collapsible sidebar */
+  .sidebar{transition:margin-left .18s ease}
+  .sidebar.collapsed{margin-left:-264px}
+  /* settings modal */
+  .modal-overlay{position:fixed;inset:0;background:rgba(1,4,9,.6);display:none;
+    align-items:center;justify-content:center;z-index:100}
+  .modal-overlay.open{display:flex}
+  .modal{width:440px;max-width:calc(100% - 40px);background:var(--bg-elev);
+    border:1px solid var(--border);border-radius:14px;box-shadow:0 16px 48px rgba(0,0,0,.5);overflow:hidden}
+  .modal-head{display:flex;align-items:center;justify-content:space-between;
+    padding:14px 16px;border-bottom:1px solid var(--border-soft);font-weight:600;font-size:15px}
+  .modal-body{padding:8px 16px 18px}
+  .set-row{padding:14px 0;border-bottom:1px solid var(--border-soft)}
+  .set-row:last-child{border-bottom:none}
+  .set-label{font-size:13px;font-weight:600;margin-bottom:8px}
+  .set-val{font-size:13px;color:var(--text-dim)}
+  .seg-group{display:flex;gap:6px;flex-wrap:wrap}
+  .seg{padding:6px 12px;border:1px solid var(--border);background:var(--bg);color:var(--text-dim);
+    border-radius:7px;font-size:12.5px;cursor:pointer;font-family:var(--font)}
+  .seg:hover{border-color:#484f58;color:var(--text)}
+  .seg.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .danger-btn{padding:7px 12px;border:1px solid #da363355;background:#da363315;color:#ff7b72;
+    border-radius:8px;font-size:12.5px;cursor:pointer;font-family:var(--font)}
+  .danger-btn:hover{background:#da363325}
 </style>
 </head>
 <body>
@@ -238,13 +274,16 @@
     <!-- Main -->
     <main class="main">
       <div class="topbar">
-        <div class="model-select" onclick="cycleModel()">
-          <span id="modelName">GPT-4.1</span>
-          <svg viewBox="0 0 16 16"><path d="M4.5 6l3.5 3.5L11.5 6z"/></svg>
+        <div class="model-dropdown" id="modelDropdown">
+          <div class="model-select" onclick="toggleModelMenu(event)">
+            <span id="modelName">GPT-4.1</span>
+            <svg viewBox="0 0 16 16"><path d="M4.5 6l3.5 3.5L11.5 6z"/></svg>
+          </div>
+          <div class="model-menu" id="modelMenu"></div>
         </div>
         <div class="topbar-actions">
-          <div class="icon-btn" title="History"><svg viewBox="0 0 16 16"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM8 3a.75.75 0 01.75.75v3.94l2.53 1.46a.75.75 0 11-.75 1.3L7.6 8.6A.75.75 0 017.25 8V3.75A.75.75 0 018 3z"/></svg></div>
-          <div class="icon-btn" title="Settings"><svg viewBox="0 0 16 16"><path d="M8 4.75a3.25 3.25 0 100 6.5 3.25 3.25 0 000-6.5zM6.25 8a1.75 1.75 0 113.5 0 1.75 1.75 0 01-3.5 0z"/></svg></div>
+          <div class="icon-btn" title="Toggle sidebar" onclick="toggleSidebar()"><svg viewBox="0 0 16 16"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM8 3a.75.75 0 01.75.75v3.94l2.53 1.46a.75.75 0 11-.75 1.3L7.6 8.6A.75.75 0 017.25 8V3.75A.75.75 0 018 3z"/></svg></div>
+          <div class="icon-btn" title="Settings" onclick="openSettings()"><svg viewBox="0 0 16 16"><path d="M8 4.75a3.25 3.25 0 100 6.5 3.25 3.25 0 000-6.5zM6.25 8a1.75 1.75 0 113.5 0 1.75 1.75 0 01-3.5 0z"/></svg></div>
         </div>
       </div>
 
@@ -290,6 +329,35 @@
   </div>
 </div>
 
+<!-- Settings modal -->
+<div class="modal-overlay" id="settingsModal">
+  <div class="modal">
+    <div class="modal-head">
+      <span>Settings</span>
+      <div class="icon-btn" onclick="closeSettings()"><svg viewBox="0 0 16 16"><path d="M3.7 3.7a1 1 0 011.4 0L8 6.6l2.9-2.9a1 1 0 111.4 1.4L9.4 8l2.9 2.9a1 1 0 11-1.4 1.4L8 9.4l-2.9 2.9a1 1 0 01-1.4-1.4L6.6 8 3.7 5.1a1 1 0 010-1.4z"/></svg></div>
+    </div>
+    <div class="modal-body">
+      <div class="set-row">
+        <div class="set-label">Account</div>
+        <div class="set-val" id="settingsAccount">—</div>
+      </div>
+      <div class="set-row">
+        <div class="set-label">Reasoning effort</div>
+        <div class="seg-group" id="reasoningRow">
+          <button class="seg" data-level="low"   onclick="setReasoning('low')">Low</button>
+          <button class="seg" data-level="medium" onclick="setReasoning('medium')">Medium</button>
+          <button class="seg" data-level="high"  onclick="setReasoning('high')">High</button>
+          <button class="seg" data-level="xhigh" onclick="setReasoning('xhigh')">X-High</button>
+        </div>
+      </div>
+      <div class="set-row">
+        <div class="set-label">Chat history</div>
+        <button class="danger-btn" onclick="clearHistory()">Clear all conversations</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 let MODELS = ["GPT-4.1","Claude Sonnet 4.6","o4-mini","Gemini 2.5 Pro"];
 let modelIdx = 0;
@@ -317,6 +385,8 @@ async function initBackend(){
       showBanner('ok','Connected to GitHub Copilot — responses are live.');
       document.querySelector('.composer-hint').textContent =
         'Connected to GitHub Copilot via the official SDK.';
+      await loadConversations();
+      newChat();
     } else {
       showBanner('err','Copilot not connected: ' + ((res&&res.error)||'unknown error') +
         '. Sign in with the Copilot CLI, then restart the app.');
@@ -331,11 +401,112 @@ function showBanner(kind, text){
     `<div class="banner ${kind}"><span class="dot"></span><span>${escapeHtml(text)}</span></div>`;
 }
 
-function cycleModel(){
-  modelIdx = (modelIdx+1) % MODELS.length;
-  const name = MODELS[modelIdx];
+// ===== Model dropdown =====
+function renderModelMenu(){
+  const menu = document.getElementById('modelMenu');
+  menu.innerHTML = MODELS.map((m,i)=>
+    `<div class="model-opt ${i===modelIdx?'sel':''}" onclick="selectModel(${i})">
+       <span class="check"><svg viewBox="0 0 16 16"><path d="M6.5 11.6 3.4 8.5l1-1 2.1 2.1L11.6 4.4l1 1z"/></svg></span>
+       <span>${escapeHtml(m)}</span></div>`).join('');
+}
+function toggleModelMenu(e){
+  e.stopPropagation();
+  renderModelMenu();
+  document.getElementById('modelDropdown').classList.toggle('open');
+}
+function selectModel(i){
+  modelIdx = i;
+  const name = MODELS[i];
   document.getElementById('modelName').textContent = name;
-  if(backendReady) window.pywebview.api.set_model(name);
+  document.getElementById('modelDropdown').classList.remove('open');
+  if(backendReady) window.pywebview.api.set_model(name, currentReasoning);
+}
+// close the menu when clicking elsewhere
+document.addEventListener('click', (e)=>{
+  const dd = document.getElementById('modelDropdown');
+  if(dd && !dd.contains(e.target)) dd.classList.remove('open');
+});
+
+// ===== Conversation state / history =====
+let conversations = [];     // [{id,title,updated}] for the sidebar
+let currentConvId = null;
+let currentMessages = [];   // [{role:'user'|'assistant', content}]
+let currentReasoning = 'medium';
+
+function newConvId(){ return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+async function loadConversations(){
+  if(!backendReady) return;
+  try{ conversations = (await window.pywebview.api.list_conversations()) || []; }
+  catch(e){ conversations = []; }
+  renderSidebar();
+}
+
+function renderSidebar(){
+  const list = document.getElementById('chatList');
+  if(backendReady && !conversations.length){
+    list.innerHTML = '<div style="padding:8px 10px;color:var(--text-faint);font-size:12px">No conversations yet</div>';
+    return;
+  }
+  if(!backendReady) return; // demo mode keeps the static sample items
+  const icon = '<svg viewBox="0 0 16 16"><path d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 01.75.75v8.5a.75.75 0 01-.75.75H5.56l-2.78 2.78A.75.75 0 011.5 14.25V2.75z"/></svg>';
+  list.innerHTML = conversations.map(c=>
+    `<div class="chat-item ${c.id===currentConvId?'active':''}" title="${escapeAttr(c.title)}" onclick="openConversation('${c.id}')">
+       ${icon}<span>${escapeHtml(c.title)}</span></div>`).join('');
+}
+
+async function persistCurrent(){
+  if(!backendReady || !currentMessages.length) return;
+  const firstUser = currentMessages.find(m=>m.role==='user');
+  const title = (firstUser ? firstUser.content : 'New chat').slice(0,60);
+  try{
+    await window.pywebview.api.save_conversation(currentConvId, title, currentMessages);
+    await loadConversations();
+  }catch(e){ /* non-fatal */ }
+}
+
+async function openConversation(id){
+  if(!backendReady) return;
+  let conv;
+  try{ conv = await window.pywebview.api.get_conversation(id); }catch(e){ return; }
+  if(!conv) return;
+  currentConvId = id;
+  currentMessages = conv.messages || [];
+  started = true;
+  const inner = document.getElementById('threadInner');
+  inner.innerHTML = '';
+  currentMessages.forEach(m=>{
+    if(m.role === 'user') addUserMessage(m.content, true);
+    else { const t = assistantShell(); t.innerHTML = renderMarkdown(m.content); }
+  });
+  renderSidebar();
+  scrollDown();
+}
+
+// ===== Top-bar buttons =====
+function toggleSidebar(){ document.querySelector('.sidebar').classList.toggle('collapsed'); }
+
+function openSettings(){ renderSettings(); document.getElementById('settingsModal').classList.add('open'); }
+function closeSettings(){ document.getElementById('settingsModal').classList.remove('open'); }
+function renderSettings(){
+  document.querySelectorAll('#reasoningRow .seg').forEach(b=>{
+    b.classList.toggle('on', b.dataset.level === currentReasoning);
+  });
+  document.getElementById('settingsAccount').textContent =
+    backendReady ? 'Connected to GitHub Copilot' : 'Demo mode (no backend)';
+}
+function setReasoning(level){
+  currentReasoning = level;
+  renderSettings();
+  if(backendReady) window.pywebview.api.set_model(MODELS[modelIdx], level);
+}
+async function clearHistory(){
+  if(backendReady){
+    try{ await window.pywebview.api.clear_history(); }catch(e){}
+    await loadConversations();
+  }
+  closeSettings();
+  newChat();
 }
 function autoGrow(el){ el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,160)+'px'; }
 function toggleSend(){
@@ -350,8 +521,11 @@ function quickAsk(text){
   input.value = text; autoGrow(input); toggleSend(); sendMessage();
 }
 function newChat(){
-  started=false;
+  started = false;
+  currentConvId = newConvId();
+  currentMessages = [];
   document.getElementById('threadInner').innerHTML = document.getElementById('emptyTemplate').innerHTML;
+  renderSidebar();
 }
 
 function escapeHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
@@ -424,6 +598,7 @@ function sendMessage(){
   const text = input.value.trim();
   if(!text) return;
   addUserMessage(text);
+  currentMessages.push({role:'user', content:text});
   input.value=''; autoGrow(input); toggleSend();
 
   const target = assistantShell();
@@ -453,8 +628,11 @@ function onCopilotDelta(chunk){
 }
 function onCopilotDone(){
   if(!curTarget) return;
-  curTarget.innerHTML = renderMarkdown(curBuf);
+  const raw = curBuf;
+  curTarget.innerHTML = renderMarkdown(raw);
   curTarget = null; curBuf = "";
+  if(raw.trim()) currentMessages.push({role:'assistant', content:raw});
+  persistCurrent();
   scrollDown();
 }
 function onCopilotError(msg){

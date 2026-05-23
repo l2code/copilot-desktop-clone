@@ -94,9 +94,12 @@ class CopilotBackend:
             return []
         return await self.client.list_models()
 
-    async def set_model(self, model: str):
+    async def set_model(self, model: str, reasoning: str | None = None):
         if self.session:
-            await self.session.set_model(model)
+            if reasoning:
+                await self.session.set_model(model, reasoning_effort=reasoning)
+            else:
+                await self.session.set_model(model)
             self.model = model
 
     async def stop(self):
