@@ -40,14 +40,16 @@ class CopilotBackend:
         self._on_delta = None
         self._on_done = None
         self._on_error = None
+        self._on_activity = None  # reasoning / tool / command activity
         self.last_quota = None  # latest quota seen via assistant.usage events
         self.commands = []      # Copilot slash commands from commands.changed events
 
-    def set_handlers(self, on_delta, on_done, on_error):
-        """Register UI callbacks. on_delta(text), on_done(), on_error(msg)."""
+    def set_handlers(self, on_delta, on_done, on_error, on_activity=None):
+        """Register UI callbacks. on_delta(text), on_done(), on_error(msg), on_activity(dict)."""
         self._on_delta = on_delta
         self._on_done = on_done
         self._on_error = on_error
+        self._on_activity = on_activity
 
     async def start(self):
         cfg = SubprocessConfig(
@@ -88,6 +90,21 @@ class CopilotBackend:
                     {"name": c.name, "description": getattr(c, "description", None)}
                     for c in cmds
                 ]
+            elif t == SessionEventType.ASSISTANT_REASONING_DELTA:
+                if self._on_activity:
+                    self._on_activity({"kind": "reasoning_delta", "text": getattr(event.data, "delta_content", "")})
+            elif t == SessionEventType.ASSISTANT_REASONING:
+                if self._on_activity:
+                    self._on_activity({"kind": "reasoning_done"})
+            elif t == SessionEventType.EXTERNAL_TOOL_REQUESTED:
+                if self._on_activity:
+                    self._on_activity({"kind": "tool", "name": getattr(event.data, "tool_name", ""), "id": getattr(event.data, "request_id", "")})
+            elif t == SessionEventType.EXTERNAL_TOOL_COMPLETED:
+                if self._on_activity:
+                    self._on_activity({"kind": "tool_done", "id": getattr(event.data, "request_id", "")})
+            elif t == SessionEventType.COMMAND_EXECUTE:
+                if self._on_activity:
+                    self._on_activity({"kind": "command", "cmd": getattr(event.data, "command", ""), "name": getattr(event.data, "command_name", "")})
             elif t == SessionEventType.SESSION_ERROR:
                 msg = getattr(event.data, "message", None) or str(event.data)
                 if self._on_error:

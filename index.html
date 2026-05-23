@@ -191,6 +191,51 @@
     background:var(--bg-elev);border-bottom:1px solid var(--border);font-size:12px;color:var(--text-dim)}
   .cb-copy{display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--text-dim);font-size:12px}
   .cb-copy:hover{color:var(--text)}
+  .cb-head-actions{display:flex;align-items:center;gap:14px}
+  .cb-expand{display:flex;align-items:center;gap:5px;cursor:pointer;color:var(--text-dim);font-size:12px}
+  .cb-expand:hover{color:var(--text)}
+  .cb-expand svg{width:13px;height:13px;fill:currentColor}
+  .chip-open{display:inline-flex;align-items:center;gap:6px;cursor:pointer}
+  .side-panel{flex-shrink:0;width:0;overflow:hidden;transition:width .22s ease;border-left:1px solid var(--border);background:var(--bg)}
+  .side-panel.open{width:560px}
+  .sp-inner{width:560px;height:100%;display:flex;flex-direction:column}
+  .sp-head{height:48px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 10px 0 16px;border-bottom:1px solid var(--border-soft)}
+  .sp-title{font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .sp-actions{display:flex;gap:2px;flex-shrink:0}
+  .sp-body{flex:1;overflow:auto}
+  .sp-body pre{padding:16px;font-family:var(--mono);font-size:12.5px;line-height:1.6;white-space:pre;color:var(--text)}
+  .sp-filemeta{padding:10px 16px;color:var(--text-dim);font-size:12px;border-bottom:1px solid var(--border-soft);font-family:var(--mono);word-break:break-all}
+  @media (max-width:1000px){ .side-panel.open{width:46vw} .sp-inner{width:46vw} }
+  /* agent activity: thinking + tool/command lines */
+  .act{margin-bottom:8px}
+  .act:empty{display:none}
+  .thinking{margin:0 0 10px;border:1px solid var(--border-soft);border-radius:8px;background:var(--bg-elev);overflow:hidden}
+  .thinking summary{cursor:pointer;padding:7px 12px;font-size:12.5px;color:var(--text-dim);user-select:none;list-style:none}
+  .thinking summary::-webkit-details-marker{display:none}
+  .thinking summary::before{content:'\25B8  '}
+  .thinking[open] summary::before{content:'\25BE  '}
+  .think-body{padding:0 12px 10px;font-size:12.5px;color:var(--text-dim);white-space:pre-wrap;line-height:1.55}
+  .act-line{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--text-dim);padding:3px 0}
+  .act-line svg{width:13px;height:13px;fill:currentColor;flex-shrink:0}
+  .act-line code{font-family:var(--mono);background:var(--bg-elev-2);padding:1px 6px;border-radius:5px;font-size:12px}
+  .act-status{margin-left:4px;color:var(--green)}
+  /* per-message actions (copy) */
+  .msg-actions{display:flex;gap:6px;margin-top:8px}
+  .msg-act-btn{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text-dim);cursor:pointer;padding:3px 8px;border-radius:6px}
+  .msg-act-btn:hover{background:var(--bg-elev);color:var(--text)}
+  .msg-act-btn svg{width:13px;height:13px;fill:currentColor}
+  /* conversation search */
+  .chat-search{margin:0 12px 8px;padding:6px 10px;background:var(--bg-elev);border:1px solid var(--border);
+    border-radius:8px;color:var(--text);font-size:12.5px;font-family:var(--font);outline:none}
+  .chat-search:focus{border-color:var(--accent)}
+  .chat-search::placeholder{color:var(--text-faint)}
+  /* jump-to-bottom button */
+  .main{position:relative}
+  .scroll-btn{position:absolute;right:30px;bottom:110px;width:34px;height:34px;border-radius:50%;
+    background:var(--bg-elev-2);border:1px solid var(--border);color:var(--text);cursor:pointer;
+    display:none;align-items:center;justify-content:center;z-index:20;box-shadow:0 4px 12px rgba(0,0,0,.4)}
+  .scroll-btn.show{display:flex}
+  .scroll-btn svg{width:16px;height:16px;fill:currentColor}
   .cb-copy svg{width:13px;height:13px;fill:currentColor}
   .codeblock pre{padding:12px 14px;overflow-x:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6}
   .codeblock .kw{color:#ff7b72}
@@ -302,6 +347,7 @@
         <svg viewBox="0 0 16 16"><path d="M7.75 2a.75.75 0 01.75.75V7h4.25a.75.75 0 010 1.5H8.5v4.25a.75.75 0 01-1.5 0V8.5H2.75a.75.75 0 010-1.5H7V2.75A.75.75 0 017.75 2z"/></svg>
         New chat
       </div>
+      <input id="chatSearch" class="chat-search" placeholder="Search chats…" oninput="renderSidebar()">
       <div class="side-label">Recent</div>
       <div class="chat-list" id="chatList">
         <div class="chat-item active"><svg viewBox="0 0 16 16"><path d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 01.75.75v8.5a.75.75 0 01-.75.75H5.56l-2.78 2.78A.75.75 0 011.5 14.25V2.75z"/></svg>Fix the async race condition</div>
@@ -351,6 +397,7 @@
         </div>
       </div>
 
+      <button id="scrollBtn" class="scroll-btn" onclick="scrollDown(true)" title="Jump to latest"><svg viewBox="0 0 16 16"><path d="M8 11.5 3.5 7l1-1L8 9.5 11.5 6l1 1z"/></svg></button>
       <div class="composer-wrap">
         <div class="composer-inner">
           <div class="composer">
@@ -380,6 +427,20 @@
         </div>
       </div>
     </main>
+
+    <!-- Right-side sliding detail panel -->
+    <aside class="side-panel" id="sidePanel">
+      <div class="sp-inner">
+        <div class="sp-head">
+          <span class="sp-title" id="spTitle">Details</span>
+          <div class="sp-actions">
+            <div class="icon-btn" title="Copy" onclick="copyPanel()"><svg viewBox="0 0 16 16"><path d="M5 2a2 2 0 00-2 2v7h1.5V4A.5.5 0 015 3.5h6V2H5z"/><path d="M7 5a2 2 0 00-2 2v6a2 2 0 002 2h5a2 2 0 002-2V7a2 2 0 00-2-2H7zm-.5 2A.5.5 0 017 6.5h5a.5.5 0 01.5.5v6a.5.5 0 01-.5.5H7a.5.5 0 01-.5-.5V7z"/></svg></div>
+            <div class="icon-btn" title="Close" onclick="closePanel()"><svg viewBox="0 0 16 16"><path d="M3.7 3.7a1 1 0 011.4 0L8 6.6l2.9-2.9a1 1 0 111.4 1.4L9.4 8l2.9 2.9a1 1 0 11-1.4 1.4L8 9.4l-2.9 2.9a1 1 0 01-1.4-1.4L6.6 8 3.7 5.1a1 1 0 010-1.4z"/></svg></div>
+          </div>
+        </div>
+        <div class="sp-body" id="spBody"></div>
+      </div>
+    </aside>
   </div>
 </div>
 
@@ -500,6 +561,16 @@ document.addEventListener('click', (e)=>{
   const comp = document.querySelector('.composer');
   if(comp && !comp.contains(e.target)) closeSlash();
 });
+(function(){
+  const t = document.getElementById('thread');
+  if(!t) return;
+  t.addEventListener('scroll', ()=>{
+    const atBottom = t.scrollHeight - t.scrollTop - t.clientHeight < 60;
+    autoScroll = atBottom;
+    const b = document.getElementById('scrollBtn');
+    if(b) b.classList.toggle('show', !atBottom);
+  });
+})();
 
 // ===== Conversation state / history =====
 let conversations = [];     // [{id,title,updated}] for the sidebar
@@ -518,13 +589,18 @@ async function loadConversations(){
 
 function renderSidebar(){
   const list = document.getElementById('chatList');
-  if(backendReady && !conversations.length){
-    list.innerHTML = '<div style="padding:8px 10px;color:var(--text-faint);font-size:12px">No conversations yet</div>';
-    return;
-  }
   if(!backendReady) return; // demo mode keeps the static sample items
+  if(!conversations.length){
+    list.innerHTML = '<div style="padding:8px 10px;color:var(--text-faint);font-size:12px">No conversations yet</div>'; return;
+  }
+  const searchEl = document.getElementById('chatSearch');
+  const q = (searchEl ? searchEl.value : '').toLowerCase();
+  const items = q ? conversations.filter(c=>(c.title||'').toLowerCase().includes(q)) : conversations;
+  if(!items.length){
+    list.innerHTML = '<div style="padding:8px 10px;color:var(--text-faint);font-size:12px">No matches</div>'; return;
+  }
   const icon = '<svg viewBox="0 0 16 16"><path d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 01.75.75v8.5a.75.75 0 01-.75.75H5.56l-2.78 2.78A.75.75 0 011.5 14.25V2.75z"/></svg>';
-  list.innerHTML = conversations.map(c=>
+  list.innerHTML = items.map(c=>
     `<div class="chat-item ${c.id===currentConvId?'active':''}" title="${escapeAttr(c.title)}" onclick="openConversation('${c.id}')">
        ${icon}<span class="ci-title">${escapeHtml(c.title)}</span>
        <span class="ci-del" title="Delete conversation" onclick="event.stopPropagation();deleteConversation('${c.id}')">&times;</span></div>`).join('');
@@ -558,7 +634,7 @@ async function openConversation(id){
   inner.innerHTML = '';
   currentMessages.forEach(m=>{
     if(m.role === 'user') addUserMessage(m.content, true, m.attachments);
-    else { const t = assistantShell(); t.innerHTML = renderMarkdown(m.content); }
+    else { const t = assistantShell(); t.innerHTML = renderMarkdown(m.content); addMessageActions(t, m.content); }
   });
   renderSidebar();
   scrollDown();
@@ -566,6 +642,40 @@ async function openConversation(id){
 
 // ===== Top-bar buttons =====
 function toggleSidebar(){ document.querySelector('.sidebar').classList.toggle('collapsed'); }
+
+// ===== Right-side detail panel =====
+let panelRaw = '';
+function openPanel(title, content, lang){
+  document.getElementById('spTitle').textContent = title || 'Details';
+  panelRaw = content;
+  const body = (lang === 'python') ? highlightPython(content) : escapeHtml(content);
+  document.getElementById('spBody').innerHTML = `<pre>${body}</pre>`;
+  document.getElementById('sidePanel').classList.add('open');
+}
+function closePanel(){ document.getElementById('sidePanel').classList.remove('open'); }
+function copyPanel(){ if(navigator.clipboard && panelRaw) navigator.clipboard.writeText(panelRaw); }
+function openPanelFromBlock(el){
+  const cb = el.closest('.codeblock');
+  const lang = cb.dataset.lang || '';
+  openPanel(lang || 'Code', cb.dataset.raw, lang);
+}
+async function openFileInPanel(path, name){
+  if(!backendReady) return;
+  openPanel(name || path, 'Loading…', '');
+  let res;
+  try{ res = await window.pywebview.api.read_file(path); }
+  catch(e){ document.getElementById('spBody').innerHTML = '<pre>Could not read file.</pre>'; return; }
+  if(!res || !res.ok){
+    document.getElementById('spBody').innerHTML = `<pre>${escapeHtml((res&&res.error)||'Could not read file')}</pre>`;
+    return;
+  }
+  const ext = (name||path).split('.').pop().toLowerCase();
+  const lang = (ext==='py') ? 'python' : '';
+  panelRaw = res.content;
+  const body = (lang==='python') ? highlightPython(res.content) : escapeHtml(res.content);
+  document.getElementById('spBody').innerHTML = `<div class="sp-filemeta">${escapeHtml(path)}</div><pre>${body}</pre>`;
+}
+function previewAttachment(i){ const a = pendingAttachments[i]; if(a) openFileInPanel(a.path, a.displayName); }
 
 // ===== Usage / quota panel =====
 function closeUsage(){ document.getElementById('usageModal').classList.remove('open'); }
@@ -658,7 +768,7 @@ let pendingAttachments = [];  // [{type:'file', path, displayName}]
 function clipSvg(){ return '<svg viewBox="0 0 16 16"><path d="M9.6 2.4a3 3 0 014.2 4.2l-6 6a1.9 1.9 0 01-2.7-2.7l5.3-5.3a.75.75 0 011 1l-5.3 5.3a.4.4 0 00.6.6l6-6a1.5 1.5 0 00-2.1-2.1l-6 6a2.6 2.6 0 003.7 3.7l5.3-5.3a.75.75 0 011 1l-5.3 5.3a4.1 4.1 0 01-5.8-5.8l6-6z"/></svg>'; }
 function renderAttachments(){
   document.getElementById('attachments').innerHTML = pendingAttachments.map((a,i)=>
-    `<span class="chip">${clipSvg()}${escapeHtml(a.displayName)}<span class="x" onclick="removeAttachment(${i})">&times;</span></span>`).join('');
+    `<span class="chip"><span class="chip-open" onclick="previewAttachment(${i})" title="Preview file">${clipSvg()}${escapeHtml(a.displayName)}</span><span class="x" onclick="removeAttachment(${i})">&times;</span></span>`).join('');
 }
 function removeAttachment(i){ pendingAttachments.splice(i,1); renderAttachments(); toggleSend(); }
 async function attachFile(){
@@ -770,7 +880,14 @@ function assistantShell(){
   return div.querySelector('#streamTarget');
 }
 
-function scrollDown(){ const t=document.getElementById('thread'); t.scrollTop=t.scrollHeight; }
+let autoScroll = true;
+function scrollDown(force){
+  const t = document.getElementById('thread');
+  if(force) autoScroll = true;
+  if(autoScroll) t.scrollTop = t.scrollHeight;
+  const b = document.getElementById('scrollBtn');
+  if(b) b.classList.toggle('show', !autoScroll);
+}
 
 // canned reply with a code block, streamed word-by-word
 function buildReply(){
@@ -814,6 +931,7 @@ function sendMessage(){
   const text = input.value.trim();
   const atts = pendingAttachments.slice();
   if(!text && !atts.length) return;
+  autoScroll = true;
   const attNames = atts.map(a=>a.displayName);
   addUserMessage(text, false, attNames);
   currentMessages.push({role:'user', content:text, attachments:attNames});
@@ -853,8 +971,10 @@ function stopStreaming(){
   if(backendReady){ try{ window.pywebview.api.abort(); }catch(e){} }
   if(curTarget){
     const raw = curBuf;
-    curTarget.innerHTML = raw.trim() ? renderMarkdown(raw) : '<p class="set-val">(stopped)</p>';
-    if(raw.trim()) currentMessages.push({role:'assistant', content:raw});
+    const ans = curTarget.querySelector('.ans');
+    const out = raw.trim() ? renderMarkdown(raw) : '<p class="set-val">(stopped)</p>';
+    if(ans) ans.innerHTML = out; else curTarget.innerHTML = out;
+    if(raw.trim()){ addMessageActions(curTarget, raw); currentMessages.push({role:'assistant', content:raw}); }
     persistCurrent();
     curTarget = null; curBuf = "";
   }
@@ -862,26 +982,79 @@ function stopStreaming(){
 }
 
 // ===== Streaming callbacks invoked by app.py =====
+function ensureStream(){
+  let ans = curTarget.querySelector('.ans');
+  if(!ans){
+    if(!curTarget.querySelector('.act')){
+      curTarget.innerHTML = '<div class="act"></div><div class="ans stream-live"></div>';
+    } else {
+      const a=document.createElement('div'); a.className='ans stream-live'; curTarget.appendChild(a);
+    }
+    ans = curTarget.querySelector('.ans');
+  }
+  return { act: curTarget.querySelector('.act'), ans };
+}
+function actSvg(kind){
+  if(kind==='tool') return '<svg viewBox="0 0 16 16"><path d="M11.5 1.5a3.5 3.5 0 00-3.2 4.9L1.7 13a1.1 1.1 0 001.5 1.5l6.6-6.6a3.5 3.5 0 004.5-4.4l-2.1 2.1-1.6-1.6 2.1-2.1a3.5 3.5 0 00-1.5-.4z"/></svg>';
+  return '<svg viewBox="0 0 16 16"><path d="M1 3.5A1.5 1.5 0 012.5 2h11A1.5 1.5 0 0115 3.5v9A1.5 1.5 0 0113.5 14h-11A1.5 1.5 0 011 12.5v-9zM4 6l2 2-2 2 .9.9L7.8 8 4.9 5.1zm4.5 3.5h3V11h-3z"/></svg>';
+}
+function onCopilotActivity(d){
+  if(!curTarget || !d) return;
+  const { act } = ensureStream();
+  if(d.kind==='reasoning_delta'){
+    let think = act.querySelector('.thinking');
+    if(!think){
+      act.insertAdjacentHTML('afterbegin','<details class="thinking" open><summary>Thinking…</summary><div class="think-body"></div></details>');
+      think = act.querySelector('.thinking');
+    }
+    think.querySelector('.think-body').textContent += (d.text||'');
+  } else if(d.kind==='reasoning_done'){
+    const think = act.querySelector('.thinking');
+    if(think){ think.open=false; const s=think.querySelector('summary'); if(s) s.textContent='Thought for a moment'; }
+  } else if(d.kind==='tool'){
+    act.insertAdjacentHTML('beforeend',
+      `<div class="act-line" data-aid="${escapeAttr(d.id||'')}">${actSvg('tool')}<span>Using <b>${escapeHtml(d.name||'tool')}</b></span><span class="act-status">…</span></div>`);
+  } else if(d.kind==='tool_done'){
+    const line = act.querySelector(`.act-line[data-aid="${escapeAttr(d.id||'')}"]`);
+    if(line){ const st=line.querySelector('.act-status'); if(st) st.textContent='\u2713'; }
+  } else if(d.kind==='command'){
+    act.insertAdjacentHTML('beforeend',
+      `<div class="act-line">${actSvg('cmd')}<code>${escapeHtml(d.cmd||d.name||'')}</code></div>`);
+  }
+  scrollDown();
+}
 function onCopilotDelta(chunk){
   if(!curTarget) return;
   curBuf += chunk;
-  let live = curTarget.querySelector('.stream-live');
-  if(!live){
-    curTarget.innerHTML = '<div class="stream-live"></div>';
-    live = curTarget.querySelector('.stream-live');
-  }
-  live.innerHTML = escapeHtml(curBuf) + '<span class="cursor-blink"></span>';
+  const { ans } = ensureStream();
+  ans.innerHTML = escapeHtml(curBuf) + '<span class="cursor-blink"></span>';
   scrollDown();
 }
 function onCopilotDone(){
   setStreaming(false);
   if(!curTarget) return;
   const raw = curBuf;
-  curTarget.innerHTML = renderMarkdown(raw);
+  const ans = curTarget.querySelector('.ans');
+  if(ans) ans.innerHTML = renderMarkdown(raw); else curTarget.innerHTML = renderMarkdown(raw);
+  const think = curTarget.querySelector('.thinking');
+  if(think){ think.open=false; const s=think.querySelector('summary'); if(s) s.textContent='Thought for a moment'; }
+  addMessageActions(curTarget, raw);
   curTarget = null; curBuf = "";
   if(raw.trim()) currentMessages.push({role:'assistant', content:raw});
   persistCurrent();
   scrollDown();
+}
+function addMessageActions(container, raw){
+  if(!raw || !raw.trim()) return;
+  const bar = document.createElement('div');
+  bar.className = 'msg-actions';
+  bar.innerHTML = '<span class="msg-act-btn" title="Copy"><svg viewBox="0 0 16 16"><path d="M5 2a2 2 0 00-2 2v7h1.5V4A.5.5 0 015 3.5h6V2H5z"/><path d="M7 5a2 2 0 00-2 2v6a2 2 0 002 2h5a2 2 0 002-2V7a2 2 0 00-2-2H7z"/></svg>Copy</span>';
+  const btn = bar.querySelector('.msg-act-btn');
+  btn.addEventListener('click', ()=>{
+    if(navigator.clipboard) navigator.clipboard.writeText(raw);
+    const t=btn.innerHTML; btn.innerHTML='\u2713 Copied'; setTimeout(()=>{ btn.innerHTML=t; },1500);
+  });
+  container.appendChild(bar);
 }
 function onCopilotError(msg){
   setStreaming(false);
@@ -908,9 +1081,12 @@ function renderMarkdown(md){
       code = code.replace(/\n$/, '');
       const body = (lang === 'python') ? highlightPython(code) : escapeHtml(code);
       const id = 'cb' + Math.random().toString(36).slice(2);
-      html += `<div class="codeblock" data-raw="${escapeAttr(code)}">
+      html += `<div class="codeblock" data-raw="${escapeAttr(code)}" data-lang="${escapeAttr(lang||'')}">
         <div class="cb-head"><span>${escapeHtml(lang||'code')}</span>
-        <span class="cb-copy" onclick="copyCode(this)"><svg viewBox="0 0 16 16"><path d="M5 2a2 2 0 00-2 2v7h1.5V4A.5.5 0 015 3.5h6V2H5z"/><path d="M7 5a2 2 0 00-2 2v6a2 2 0 002 2h5a2 2 0 002-2V7a2 2 0 00-2-2H7zm-.5 2A.5.5 0 017 6.5h5a.5.5 0 01.5.5v6a.5.5 0 01-.5.5H7a.5.5 0 01-.5-.5V7z"/></svg>Copy</span></div>
+        <div class="cb-head-actions">
+        <span class="cb-expand" onclick="openPanelFromBlock(this)" title="Open in side panel"><svg viewBox="0 0 16 16"><path d="M2 2h5v1.5H3.5v3.5H2zM14 14H9v-1.5h3.5V9H14z"/></svg>Expand</span>
+        <span class="cb-copy" onclick="copyCode(this)"><svg viewBox="0 0 16 16"><path d="M5 2a2 2 0 00-2 2v7h1.5V4A.5.5 0 015 3.5h6V2H5z"/><path d="M7 5a2 2 0 00-2 2v6a2 2 0 002 2h5a2 2 0 002-2V7a2 2 0 00-2-2H7zm-.5 2A.5.5 0 017 6.5h5a.5.5 0 01.5.5v6a.5.5 0 01-.5.5H7a.5.5 0 01-.5-.5V7z"/></svg>Copy</span>
+        </div></div>
         <pre>${body}</pre></div>`;
     } else {
       html += renderTextBlock(seg);

@@ -92,6 +92,7 @@ class Api:
             on_delta=lambda c: self._js("onCopilotDelta", c),
             on_done=lambda: self._js("onCopilotDone"),
             on_error=lambda m: self._js("onCopilotError", m),
+            on_activity=lambda d: self._js("onCopilotActivity", d),
         )
         try:
             status = self._run(self.backend.start())
@@ -120,6 +121,14 @@ class Api:
         try:
             self._run(self.backend.abort())
             return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def read_file(self, path, max_bytes=400000):
+        """Read a text file for preview in the side panel."""
+        try:
+            with open(path, "r", encoding="utf-8", errors="replace") as f:
+                return {"ok": True, "content": f.read(max_bytes)}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
