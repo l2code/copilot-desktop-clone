@@ -374,6 +374,13 @@
   #permDetail{background:var(--code-bg);border:1px solid var(--border-soft);border-radius:8px;
     padding:10px 12px;font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;word-break:break-word;
     max-height:200px;overflow:auto;color:var(--text);margin:0}
+  #permDiff{margin-top:6px}
+  .diff-view{background:var(--code-bg);border:1px solid var(--border-soft);border-radius:8px;overflow:auto;max-height:300px;margin:0}
+  .diff-view .dl{white-space:pre;padding:0 10px;font-family:var(--mono);font-size:12px;line-height:1.5}
+  .diff-add{background:#1f7a3322;color:#3fb950}
+  .diff-del{background:#da363322;color:#ff7b72}
+  .diff-hunk{color:var(--text-dim);background:var(--bg-elev)}
+  .act-diff-badge{font-size:11px;color:var(--accent);margin-left:6px}
   .danger-btn{padding:7px 12px;border:1px solid #da363355;background:#da363315;color:#ff7b72;
     border-radius:8px;font-size:12.5px;cursor:pointer;font-family:var(--font)}
   .danger-btn:hover{background:#da363325}
@@ -539,6 +546,7 @@
     <div class="modal-body">
       <div class="set-val" id="permReason"></div>
       <pre id="permDetail"></pre>
+      <div id="permDiff" style="display:none"></div>
       <div class="perm-actions">
         <button class="seg" onclick="resolvePerm('reject')">Reject</button>
         <button class="seg" id="permAllowAll" onclick="resolvePerm('approve-all')">Allow all this session</button>
@@ -897,6 +905,7 @@ async function pickFolder(){
 
 // ===== Right-side detail panel =====
 let panelRaw = '';
+let lastDiffs = {};   // file -> unified diff (from write permission requests)
 function openPanel(title, content, lang){
   document.getElementById('spTitle').textContent = title || 'Details';
   panelRaw = content;
@@ -910,6 +919,27 @@ function openPanelFromBlock(el){
   const cb = el.closest('.codeblock');
   const lang = cb.dataset.lang || '';
   openPanel(lang || 'Code', cb.dataset.raw, lang);
+}
+function renderDiff(text){
+  const lines = String(text||'').split('\n');
+  const html = lines.map(l=>{
+    if(l.startsWith('diff --git') || l.startsWith('index ') || l.startsWith('+++') || l.startsWith('---')) return '';
+    let cls = 'dl';
+    if(l.startsWith('+')) cls = 'dl diff-add';
+    else if(l.startsWith('-')) cls = 'dl diff-del';
+    else if(l.startsWith('@@')) cls = 'dl diff-hunk';
+    return `<div class="${cls}">${escapeHtml(l || ' ')}</div>`;
+  }).join('');
+  return `<div class="diff-view">${html}</div>`;
+}
+function openDiffPanel(file){
+  const base = file ? String(file).split(/[\\/]/).pop() : '';
+  const diff = lastDiffs[file] || lastDiffs[base];
+  if(!diff) return;
+  document.getElementById('spTitle').textContent = 'Diff \u00b7 ' + (base || file);
+  panelRaw = diff;
+  document.getElementById('spBody').innerHTML = renderDiff(diff);
+  document.getElementById('sidePanel').classList.add('open');
 }
 async function openFileInPanel(path, name){
   if(!backendReady) return;
@@ -1069,6 +1099,12 @@ function nextPerm(){
   r.textContent = permCurrent.reason || ''; r.style.display = permCurrent.reason ? 'block' : 'none';
   const d = document.getElementById('permDetail');
   d.textContent = permCurrent.detail || ''; d.style.display = permCurrent.detail ? 'block' : 'none';
+  const dv = document.getElementById('permDiff');
+  if(permCurrent.diff){
+    dv.innerHTML = renderDiff(permCurrent.diff); dv.style.display = 'block';
+    d.style.display = 'none';
+    if(permCurrent.file){ lastDiffs[permCurrent.file] = permCurrent.diff; lastDiffs[String(permCurrent.file).split(/[\\/]/).pop()] = permCurrent.diff; }
+  } else { dv.style.display = 'none'; }
   document.getElementById('permAllowAll').style.display = (permCurrent.canSession === false) ? 'none' : '';
   modal.classList.add('open');
 }
@@ -1427,8 +1463,12 @@ function onCopilotActivity(d){
     if(think){ think.open=false; const s=think.querySelector('summary'); if(s) s.textContent='Thought for a moment'; }
   } else if(d.kind==='tool'){
     const det = d.detail ? ` <code>${escapeHtml(d.detail)}</code>` : '';
+    const base = d.detail ? String(d.detail).split(/[\\/]/).pop() : '';
+    const hasDiff = d.detail && (lastDiffs[d.detail] || lastDiffs[base]);
+    const click = hasDiff ? ` onclick="openDiffPanel('${escapeAttr(d.detail)}')" style="cursor:pointer"` : '';
+    const badge = hasDiff ? ' <span class="act-diff-badge">view diff</span>' : '';
     act.insertAdjacentHTML('beforeend',
-      `<div class="act-line" data-aid="${escapeAttr(d.id||'')}">${actSvg('tool')}<span><b>${escapeHtml(d.name||'tool')}</b>${det}</span><span class="act-status">…</span></div>`);
+      `<div class="act-line" data-aid="${escapeAttr(d.id||'')}"${click}>${actSvg('tool')}<span><b>${escapeHtml(d.name||'tool')}</b>${det}${badge}</span><span class="act-status">…</span></div>`);
   } else if(d.kind==='tool_done'){
     const line = act.querySelector(`.act-line[data-aid="${escapeAttr(d.id||'')}"]`);
     if(line){ const st=line.querySelector('.act-status'); if(st){ st.textContent = (d.success===false)?'\u2717':'\u2713'; if(d.success===false) st.style.color='#ff7b72'; } }

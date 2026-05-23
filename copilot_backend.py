@@ -97,8 +97,11 @@ class CopilotBackend:
                 detail = ", ".join(getattr(u, "url", str(u)) for u in urls)
         reason = self._perm_field(req, "intention") or self._perm_field(req, "reason") or ""
         can_session = self._perm_field(req, "can_offer_session_approval", True)
+        diff = self._perm_field(req, "diff", "") or ""
+        file_name = self._perm_field(req, "file_name", "") or ""
         return {"kind": kind, "title": title, "detail": str(detail),
-                "reason": str(reason), "canSession": bool(can_session)}
+                "reason": str(reason), "canSession": bool(can_session),
+                "diff": str(diff), "file": str(file_name)}
 
     async def _handle_permission(self, req, invocation=None):
         kind = getattr(self._perm_field(req, "kind", ""), "value", "") or ""
