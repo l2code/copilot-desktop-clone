@@ -95,10 +95,11 @@
   .ci-del{opacity:0;color:var(--text-dim);font-size:15px;line-height:1;padding:0 2px;flex-shrink:0}
   .chat-item:hover .ci-del{opacity:.6}
   .ci-del:hover{opacity:1;color:var(--text)}
-  .sb-top{display:flex;justify-content:flex-end;padding:8px 10px 0}
-  .sb-collapse{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;color:var(--text-dim);cursor:pointer}
-  .sb-collapse:hover{background:var(--bg-elev);color:var(--text)}
-  .sb-collapse svg{width:15px;height:15px;fill:currentColor}
+  .sb-top{height:40px;flex-shrink:0}
+  .sb-toggle{position:fixed;top:6px;left:9px;z-index:50;width:30px;height:30px;border-radius:7px;
+    display:flex;align-items:center;justify-content:center;color:var(--text-dim);cursor:pointer;background:transparent}
+  .sb-toggle:hover{background:var(--bg-elev);color:var(--text)}
+  .sb-toggle svg{width:17px;height:17px}
   .proj-head{display:flex;align-items:center;gap:7px;padding:9px 10px 3px;color:var(--text-dim);font-size:12px;font-weight:500}
   .proj-head .proj-ico{width:13px;height:13px;fill:currentColor;opacity:.8;flex-shrink:0}
   .proj-head span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -394,14 +395,14 @@
 <body>
 <div class="app">
 
+  <div class="sb-toggle" onclick="toggleSidebar()" title="Toggle sidebar (Ctrl+B)">
+    <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.3"><rect x="1.75" y="2.75" width="12.5" height="10.5" rx="2"/><line x1="6" y1="2.75" x2="6" y2="13.25"/></svg>
+  </div>
+
   <div class="body">
     <!-- Sidebar -->
     <aside class="sidebar">
-      <div class="sb-top">
-        <div class="sb-collapse" onclick="toggleSidebar()" title="Collapse sidebar">
-          <svg viewBox="0 0 16 16"><path d="M2 2.75A.75.75 0 012.75 2h10.5a.75.75 0 01.75.75v10.5a.75.75 0 01-.75.75H2.75a.75.75 0 01-.75-.75V2.75zM6 3.5v9H3.5v-9H6zm1.5 0h5v9h-5v-9z"/></svg>
-        </div>
-      </div>
+      <div class="sb-top"></div>
       <div class="new-chat" onclick="newChat()">
         <svg viewBox="0 0 16 16"><path d="M7.75 2a.75.75 0 01.75.75V7h4.25a.75.75 0 010 1.5H8.5v4.25a.75.75 0 01-1.5 0V8.5H2.75a.75.75 0 010-1.5H7V2.75A.75.75 0 017.75 2z"/></svg>
         New chat
@@ -426,7 +427,6 @@
       <div class="topbar">
         <div></div>
         <div class="topbar-actions">
-          <div class="icon-btn" title="Show / hide sidebar" onclick="toggleSidebar()"><svg viewBox="0 0 16 16"><path d="M2 2.75A.75.75 0 012.75 2h10.5a.75.75 0 01.75.75v10.5a.75.75 0 01-.75.75H2.75a.75.75 0 01-.75-.75V2.75zM6 3.5v9H3.5v-9H6zm1.5 0h5v9h-5v-9z"/></svg></div>
           <div class="icon-btn" title="Rewind conversation — removes the last exchange (does not revert file edits on disk)" onclick="undoLast()"><svg viewBox="0 0 16 16"><path d="M6 3.5 2.5 7 6 10.5V8h4a2.5 2.5 0 010 5H7v1.5h3a4 4 0 000-8H6V3.5z"/></svg></div>
           <div class="icon-btn" title="Settings" onclick="openSettings()"><svg viewBox="0 0 16 16"><path d="M8 4.75a3.25 3.25 0 100 6.5 3.25 3.25 0 000-6.5zM6.25 8a1.75 1.75 0 113.5 0 1.75 1.75 0 01-3.5 0z"/></svg></div>
         </div>
@@ -732,6 +732,7 @@ document.addEventListener('keydown', (e)=>{
     const s = document.getElementById('chatSearch'); if(s){ s.focus(); s.select(); }
     return;
   }
+  if(mod && (e.key === 'b' || e.key === 'B')){ e.preventDefault(); toggleSidebar(); return; }
   // Up-arrow in an empty composer recalls the last message for editing/resend.
   if(e.key === 'ArrowUp' && e.target && e.target.id === 'input'
      && !e.target.value.trim() && !slashOpen && !atOpen){
