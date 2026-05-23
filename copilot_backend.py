@@ -300,7 +300,8 @@ class CopilotBackend:
                         except Exception: detail = str(args)
                 if self._on_activity:
                     self._on_activity({"kind": "tool", "name": getattr(d, "tool_name", "tool"),
-                                       "id": getattr(d, "tool_call_id", ""), "detail": str(detail)[:400]})
+                                       "id": getattr(d, "tool_call_id", ""), "detail": str(detail)[:400],
+                                       "mcp": getattr(d, "mcp_server_name", None)})
             elif t == SessionEventType.TOOL_EXECUTION_COMPLETE:
                 d = event.data
                 if self._on_activity:

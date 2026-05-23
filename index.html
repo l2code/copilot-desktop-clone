@@ -372,6 +372,23 @@
   .cz-mono{font-family:var(--mono);font-size:12.5px;min-height:110px}
   .cz-actions{display:flex;justify-content:flex-end;margin-top:8px}
   .cz-err{color:#ff7b72;font-size:12px;margin-top:6px;min-height:14px}
+  .mcp-health{font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px}
+  .mcp-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border-soft)}
+  .mcp-row:last-child{border-bottom:none}
+  .mcp-name{font-size:13px;font-weight:500;flex-shrink:0}
+  .mcp-meta{font-size:11px;color:var(--text-faint);max-width:160px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .mcp-spacer{flex:1}
+  .mcp-badge{font-size:10.5px;padding:2px 7px;border-radius:10px;border:1px solid var(--border-soft);color:var(--text-dim)}
+  .mcp-badge.connected{color:var(--green);border-color:#3fb95055}
+  .mcp-badge.failed{color:#ff7b72;border-color:#da363355}
+  .mcp-badge.needs-auth{color:#e3b341;border-color:#e3b34155}
+  .mcp-badge.disabled{color:var(--text-faint)}
+  .mcp-actions{display:flex;gap:4px;flex-shrink:0}
+  .mcp-actions .seg{padding:3px 8px;font-size:11px}
+  .mcp-form{border:1px solid var(--border);border-radius:8px;padding:10px;margin-top:8px}
+  .mcp-form label{display:block;font-size:12px;color:var(--text-dim);margin:6px 0 2px}
+  .mcp-form input,.mcp-form textarea{width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12.5px;font-family:var(--font)}
+  .mcp-empty{font-size:12px;color:var(--text-faint);padding:6px 0}
   .perm-rule{display:flex;align-items:center;justify-content:space-between;margin:7px 0;gap:10px}
   .perm-rule-label{font-size:12.5px;color:var(--text-dim)}
   .perm-rule .seg{padding:4px 9px;font-size:11.5px}
@@ -517,11 +534,19 @@
         <div class="cz-actions"><button class="seg on" onclick="saveInstructions()">Save instructions</button></div>
       </div>
       <div class="set-row">
-        <div class="set-label">MCP servers (JSON)</div>
-        <div class="set-val" style="margin-bottom:6px">Object mapping server name &#8594; config (stdio or http).</div>
-        <textarea id="mcpText" class="cz-text cz-mono" spellcheck="false" placeholder='{ "fetch": { "type": "local", "command": "uvx", "args": ["mcp-server-fetch"] } }'></textarea>
-        <div class="cz-err" id="mcpErr"></div>
-        <div class="cz-actions"><button class="seg on" onclick="saveMcp()">Save MCP servers</button></div>
+        <div class="set-label">MCP servers <span id="mcpHealth" class="mcp-health"></span></div>
+        <div class="set-val" style="margin-bottom:6px">Tools the agent can call from external servers. Status updates after first use.</div>
+        <div id="mcpList"></div>
+        <div id="mcpForm" class="mcp-form" style="display:none"></div>
+        <div class="cz-actions" style="justify-content:space-between;margin-top:8px">
+          <button class="seg" onclick="mcpAddNew()">+ Add server</button>
+          <button class="seg" onclick="toggleMcpJson()">Advanced (JSON)</button>
+        </div>
+        <div id="mcpJsonWrap" style="display:none;margin-top:8px">
+          <textarea id="mcpText" class="cz-text cz-mono" spellcheck="false" placeholder='{ "fetch": { "type": "local", "command": "uvx", "args": ["mcp-server-fetch"] } }'></textarea>
+          <div class="cz-err" id="mcpErr"></div>
+          <div class="cz-actions"><button class="seg on" onclick="saveMcp()">Save JSON</button></div>
+        </div>
       </div>
     </div>
   </div>
@@ -1070,11 +1095,11 @@ async function openCustomize(){
   document.getElementById('mcpErr').textContent = '';
   if(backendReady){
     try{ const r = await window.pywebview.api.get_instructions(); document.getElementById('instrText').value = (r && r.text) || ''; }catch(e){}
-    try{
-      const m = await window.pywebview.api.get_mcp();
-      const sv = (m && m.servers) || {};
-      document.getElementById('mcpText').value = Object.keys(sv).length ? JSON.stringify(sv, null, 2) : '';
-    }catch(e){}
+    try{ const m = await window.pywebview.api.get_mcp(); mcpServers = (m && m.servers) || {}; }catch(e){ mcpServers = {}; }
+    try{ const st = await window.pywebview.api.get_mcp_status(); mcpStatus = (st && st.status) || {}; mcpDisabled = (st && st.disabled) || []; }catch(e){}
+    document.getElementById('mcpForm').style.display = 'none';
+    document.getElementById('mcpJsonWrap').style.display = 'none';
+    renderMcpList();
   }
 }
 function closeCustomize(){ document.getElementById('customizeModal').classList.remove('open'); }
@@ -1096,8 +1121,114 @@ async function saveMcp(){
       document.getElementById('mcpErr').textContent = 'Expected an object mapping server name to config.'; return;
     }
   }
+  document.getElementById('mcpErr').textContent = '';
+  mcpServers = obj;
   try{ await window.pywebview.api.set_mcp(obj); }catch(e){}
-  closeCustomize(); newChat(); flashBanner('MCP servers saved');
+  document.getElementById('mcpJsonWrap').style.display = 'none';
+  renderMcpList(); flashBanner('MCP servers saved');
+}
+// ===== MCP server manager =====
+let mcpServers = {}, mcpStatus = {}, mcpDisabled = [];
+function parseKV(text, sep){
+  const o = {};
+  String(text||'').split('\n').forEach(l=>{ const i=l.indexOf(sep); if(i>0){ const k=l.slice(0,i).trim(); if(k) o[k]=l.slice(i+1).trim(); } });
+  return o;
+}
+function renderMcpList(){
+  const host = document.getElementById('mcpList'); if(!host) return;
+  const names = Object.keys(mcpServers);
+  const connected = names.filter(n=>(mcpStatus[n]||{}).status==='connected').length;
+  const hb = document.getElementById('mcpHealth'); if(hb) hb.textContent = names.length ? `(${connected}/${names.length} connected)` : '';
+  if(!names.length){ host.innerHTML = '<div class="mcp-empty">No MCP servers configured.</div>'; return; }
+  host.innerHTML = names.map(n=>{
+    const cfg = mcpServers[n] || {};
+    const t = cfg.url ? 'http' : 'stdio';
+    const disabled = mcpDisabled.indexOf(n) !== -1;
+    const st = disabled ? 'disabled' : ((mcpStatus[n]||{}).status || 'pending');
+    const err = (mcpStatus[n]||{}).error || '';
+    const meta = t==='http' ? (cfg.url||'') : ((cfg.command||'') + ' ' + ((cfg.args||[]).join(' ')));
+    return `<div class="mcp-row">
+      <span class="mcp-name">${escapeHtml(n)}</span>
+      <span class="mcp-badge ${escapeHtml(st)}" title="${escapeAttr(err)}">${escapeHtml(st)}</span>
+      <span class="mcp-meta" title="${escapeAttr(meta)}">${escapeHtml(meta)}</span>
+      <span class="mcp-spacer"></span>
+      <span class="mcp-actions">
+        <button class="seg" onclick="mcpToggle('${escapeAttr(n)}', ${disabled})">${disabled?'Enable':'Disable'}</button>
+        <button class="seg" onclick="mcpEdit('${escapeAttr(n)}')">Edit</button>
+        <button class="seg" onclick="mcpRemove('${escapeAttr(n)}')">Remove</button>
+      </span></div>`;
+  }).join('');
+}
+function mcpAddNew(){ mcpRenderForm(''); }
+function mcpEdit(name){ mcpRenderForm(name); }
+function mcpCancelForm(){ document.getElementById('mcpForm').style.display='none'; }
+function mcpRenderForm(name){
+  const cfg = name ? (mcpServers[name]||{}) : {};
+  const isHttp = !!cfg.url;
+  const f = document.getElementById('mcpForm');
+  f.style.display = 'block';
+  f.innerHTML = `
+    <label>Server name</label>
+    <input id="mcpfName" value="${escapeAttr(name||'')}" ${name?'readonly':''} placeholder="e.g. fetch">
+    <label>Transport</label>
+    <span class="seg-group">
+      <button type="button" class="seg ${!isHttp?'on':''}" onclick="mcpSetTransport('stdio')">stdio (local)</button>
+      <button type="button" class="seg ${isHttp?'on':''}" onclick="mcpSetTransport('http')">http / sse</button>
+    </span>
+    <div id="mcpStdio" style="display:${isHttp?'none':'block'}">
+      <label>Command</label><input id="mcpfCmd" value="${escapeAttr(cfg.command||'')}" placeholder="npx">
+      <label>Arguments (space-separated)</label><input id="mcpfArgs" value="${escapeAttr((cfg.args||[]).join(' '))}" placeholder="-y @modelcontextprotocol/server-fetch">
+      <label>Env (KEY=VALUE per line)</label><textarea id="mcpfEnv" rows="2">${escapeHtml(Object.entries(cfg.env||{}).map(kv=>kv[0]+'='+kv[1]).join('\n'))}</textarea>
+    </div>
+    <div id="mcpHttp" style="display:${isHttp?'block':'none'}">
+      <label>URL</label><input id="mcpfUrl" value="${escapeAttr(cfg.url||'')}" placeholder="https://example.com/mcp">
+      <label>Headers (KEY: VALUE per line)</label><textarea id="mcpfHeaders" rows="2">${escapeHtml(Object.entries(cfg.headers||{}).map(kv=>kv[0]+': '+kv[1]).join('\n'))}</textarea>
+    </div>
+    <div class="cz-actions" style="gap:6px;margin-top:8px">
+      <button type="button" class="seg" onclick="mcpCancelForm()">Cancel</button>
+      <button type="button" class="seg on" onclick="mcpSaveForm()">Save server</button>
+    </div>`;
+}
+function mcpSetTransport(t){
+  document.getElementById('mcpStdio').style.display = t==='stdio' ? 'block' : 'none';
+  document.getElementById('mcpHttp').style.display = t==='http' ? 'block' : 'none';
+  const segs = document.querySelectorAll('#mcpForm .seg-group .seg');
+  if(segs[0]) segs[0].classList.toggle('on', t==='stdio');
+  if(segs[1]) segs[1].classList.toggle('on', t==='http');
+}
+async function mcpSaveForm(){
+  const name = document.getElementById('mcpfName').value.trim();
+  if(!name) return;
+  const httpVisible = document.getElementById('mcpHttp').style.display !== 'none';
+  let cfg;
+  if(httpVisible){
+    cfg = {type:'http', url: document.getElementById('mcpfUrl').value.trim(), tools:['*']};
+    const h = parseKV(document.getElementById('mcpfHeaders').value, ':'); if(Object.keys(h).length) cfg.headers = h;
+  } else {
+    cfg = {type:'local', command: document.getElementById('mcpfCmd').value.trim(),
+           args: document.getElementById('mcpfArgs').value.trim().split(/\s+/).filter(Boolean), tools:['*']};
+    const e = parseKV(document.getElementById('mcpfEnv').value, '='); if(Object.keys(e).length) cfg.env = e;
+  }
+  mcpServers[name] = cfg;
+  document.getElementById('mcpForm').style.display = 'none';
+  if(backendReady){ try{ await window.pywebview.api.set_mcp(mcpServers); }catch(e){} }
+  renderMcpList(); flashBanner('MCP server saved');
+}
+async function mcpToggle(name, enable){
+  if(backendReady){ try{ await window.pywebview.api.set_mcp_enabled(name, enable); }catch(e){} }
+  if(enable) mcpDisabled = mcpDisabled.filter(x=>x!==name); else if(mcpDisabled.indexOf(name)===-1) mcpDisabled.push(name);
+  renderMcpList();
+}
+async function mcpRemove(name){
+  delete mcpServers[name];
+  if(backendReady){ try{ await window.pywebview.api.set_mcp(mcpServers); }catch(e){} }
+  renderMcpList();
+}
+function toggleMcpJson(){
+  const w = document.getElementById('mcpJsonWrap');
+  const show = w.style.display === 'none';
+  w.style.display = show ? 'block' : 'none';
+  if(show){ document.getElementById('mcpText').value = Object.keys(mcpServers).length ? JSON.stringify(mcpServers, null, 2) : ''; }
 }
 function renderSettings(){
   document.querySelectorAll('#reasoningRow .seg').forEach(b=>{
@@ -1496,6 +1627,7 @@ function actSvg(kind){
 function onCopilotActivity(d){
   if(!d) return;
   if(d.kind === 'context'){ onContextUsage(d.current, d.limit); return; }
+  if(d.kind === 'mcp_status'){ mcpStatus = d.servers || {}; renderMcpList(); return; }
   if(!curTarget) return;
   const { act } = ensureStream();
   if(d.kind==='reasoning_delta'){
@@ -1509,7 +1641,8 @@ function onCopilotActivity(d){
     const think = act.querySelector('.thinking');
     if(think){ think.open=false; const s=think.querySelector('summary'); if(s) s.textContent='Thought for a moment'; }
   } else if(d.kind==='tool'){
-    const det = d.detail ? ` <code>${escapeHtml(d.detail)}</code>` : '';
+    const who = d.mcp ? `<b>${escapeHtml(d.mcp)}</b> \u00b7 ` : '';
+    const det = (who ? ' '+who : '') + (d.detail ? ` <code>${escapeHtml(d.detail)}</code>` : '');
     const base = d.detail ? String(d.detail).split(/[\\/]/).pop() : '';
     const hasDiff = d.detail && (lastDiffs[d.detail] || lastDiffs[base]);
     const click = hasDiff ? ` onclick="openDiffPanel('${escapeAttr(d.detail)}')" style="cursor:pointer"` : '';
