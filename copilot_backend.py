@@ -95,7 +95,7 @@ class CopilotBackend:
         return {"kind": kind, "title": title, "detail": str(detail),
                 "reason": str(reason), "canSession": bool(can_session)}
 
-    async def _handle_permission(self, req):
+    async def _handle_permission(self, req, invocation=None):
         kind = getattr(self._perm_field(req, "kind", ""), "value", "")
         # Auto-allow read-only requests and everything once the user trusts the session.
         if self.auto_approve or kind == "read" or self._perm_field(req, "read_only", False):
