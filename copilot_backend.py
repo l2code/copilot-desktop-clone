@@ -40,6 +40,8 @@ class CopilotBackend:
         self.github_token = github_token
         self.model = model
         self.working_dir = working_dir   # folder Copilot may read/run commands in
+        self.instructions = ""           # custom instructions (system message, append mode)
+        self.mcp_servers = None          # dict[str, MCPServerConfig] for MCP tools
         self.client: CopilotClient | None = None
         self.session = None
         self._on_delta = None
@@ -140,19 +142,36 @@ class CopilotBackend:
         return status
 
     async def _make_session(self):
-        return await self.client.create_session(
+        kwargs = dict(
             on_permission_request=self._handle_permission,
             model=self.model,
             streaming=True,
             on_event=self._handle_event,
             working_directory=self.working_dir,
+            enable_config_discovery=True,   # honor repo AGENTS.md / .github instructions
         )
+        if self.instructions:
+            kwargs["system_message"] = {"mode": "append", "content": self.instructions}
+        if self.mcp_servers:
+            kwargs["mcp_servers"] = self.mcp_servers
+        return await self.client.create_session(**kwargs)
 
-    async def set_working_dir(self, path):
-        self.working_dir = path
+    async def _recreate(self):
         self.commands = []
         if self.client:
             self.session = await self._make_session()
+
+    async def set_working_dir(self, path):
+        self.working_dir = path
+        await self._recreate()
+
+    async def set_instructions(self, text):
+        self.instructions = text or ""
+        await self._recreate()
+
+    async def set_mcp_servers(self, servers):
+        self.mcp_servers = servers or None
+        await self._recreate()
 
     def _handle_event(self, event):
         """Called by the SDK for every session event. Sync callback."""

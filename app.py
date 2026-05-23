@@ -126,6 +126,30 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def get_instructions(self):
+        return {"ok": True, "text": self.backend.instructions if self.backend else ""}
+
+    def set_instructions(self, text):
+        if not self.backend:
+            return {"ok": False, "error": "Backend not started"}
+        try:
+            self._run(self.backend.set_instructions(text))
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_mcp(self):
+        return {"ok": True, "servers": (self.backend.mcp_servers or {}) if self.backend else {}}
+
+    def set_mcp(self, servers):
+        if not self.backend:
+            return {"ok": False, "error": "Backend not started"}
+        try:
+            self._run(self.backend.set_mcp_servers(servers))
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def resolve_permission(self, rid, decision):
         if self.backend:
             self.backend.resolve_permission(rid, decision)
