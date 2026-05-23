@@ -408,12 +408,7 @@
       </div>
       <input id="chatSearch" class="chat-search" placeholder="Search chats…" oninput="renderSidebar()">
       <div class="side-label">Projects</div>
-      <div class="chat-list" id="chatList">
-        <div class="chat-item active"><svg viewBox="0 0 16 16"><path d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 01.75.75v8.5a.75.75 0 01-.75.75H5.56l-2.78 2.78A.75.75 0 011.5 14.25V2.75z"/></svg>Fix the async race condition</div>
-        <div class="chat-item"><svg viewBox="0 0 16 16"><path d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 01.75.75v8.5a.75.75 0 01-.75.75H5.56l-2.78 2.78A.75.75 0 011.5 14.25V2.75z"/></svg>Explain this regex</div>
-        <div class="chat-item"><svg viewBox="0 0 16 16"><path d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 01.75.75v8.5a.75.75 0 01-.75.75H5.56l-2.78 2.78A.75.75 0 011.5 14.25V2.75z"/></svg>Write unit tests for parser</div>
-        <div class="chat-item"><svg viewBox="0 0 16 16"><path d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 01.75.75v8.5a.75.75 0 01-.75.75H5.56l-2.78 2.78A.75.75 0 011.5 14.25V2.75z"/></svg>Dockerfile for FastAPI app</div>
-      </div>
+      <div class="chat-list" id="chatList"><div class="sb-empty">Loading\u2026</div></div>
       <div class="sidebar-footer">
         <div class="avatar">RX</div>
         <div>
@@ -635,6 +630,9 @@ window.addEventListener('pywebviewready', initBackend);
 
 async function initBackend(){
   setStatus('warn');
+  // Show saved conversations immediately (history file; independent of the session).
+  try{ conversations = (await window.pywebview.api.list_conversations()) || []; }catch(e){ conversations = []; }
+  renderSidebar();
   try{
     const res = await window.pywebview.api.start();
     if(res && res.ok){
@@ -787,7 +785,7 @@ let autoApprove = false;
 function newConvId(){ return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
 async function loadConversations(){
-  if(!backendReady) return;
+  if(!window.pywebview || !window.pywebview.api) return;
   try{ conversations = (await window.pywebview.api.list_conversations()) || []; }
   catch(e){ conversations = []; }
   renderSidebar();
@@ -808,7 +806,7 @@ function projName(cwd){
 }
 function renderSidebar(){
   const list = document.getElementById('chatList');
-  if(!backendReady) return;
+  if(!list) return;
   if(!conversations.length){ list.innerHTML = '<div class="sb-empty">No conversations yet</div>'; return; }
   const searchEl = document.getElementById('chatSearch');
   const q = (searchEl ? searchEl.value : '').toLowerCase();
@@ -870,7 +868,7 @@ async function persistCurrent(){
 }
 
 async function openConversation(id){
-  if(!backendReady) return;
+  if(!window.pywebview || !window.pywebview.api) return;
   let conv;
   try{ conv = await window.pywebview.api.get_conversation(id); }catch(e){ return; }
   if(!conv) return;
