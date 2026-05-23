@@ -467,15 +467,8 @@
         <div class="auth-card">
           <svg viewBox="0 0 16 16" class="auth-glyph"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zM5.3 5.7c.6-.7 1.5-1.1 2.7-1.1s2.1.4 2.7 1.1c.5.6.8 1.4.8 2.3v.4c0 .9-.3 1.7-.8 2.3-.6.7-1.5 1.1-2.7 1.1s-2.1-.4-2.7-1.1c-.5-.6-.8-1.4-.8-2.3V8c0-.9.3-1.7.8-2.3z"/></svg>
           <h2>Sign in to GitHub Copilot</h2>
-          <p id="authMsg">Sign in with your GitHub account to use Copilot on this machine.</p>
+          <p id="authMsg">A GitHub sign-in window will open where you can choose GitHub.com, Enterprise (GHE.com), or another provider.</p>
           <div id="authCode" class="auth-code" style="display:none"></div>
-          <div class="auth-host">
-            <span class="seg-group">
-              <button class="seg on" id="authHostDotcom" onclick="authSetHost('dotcom')">GitHub.com</button>
-              <button class="seg" id="authHostGhe" onclick="authSetHost('ghe')">Enterprise</button>
-            </span>
-            <input id="authHostUrl" class="auth-host-input" style="display:none" placeholder="https://your-company.ghe.com">
-          </div>
           <button class="auth-btn" id="authBtn" onclick="startSignIn()">Sign in</button>
         </div>
       </div>
@@ -689,7 +682,6 @@ async function initBackend(){
     } else if(res && res.needsAuth){
       setStatus('warn');
       showAuth(true);
-      if(res.host) authPrefillHost(res.host);
     } else {
       setStatus('err');
       showBanner('err','Copilot not connected: ' + ((res&&res.error)||'unknown error') + '.');
@@ -716,28 +708,11 @@ function showAuth(needed, msg){
   o.classList.toggle('show', !!needed);
   if(msg) document.getElementById('authMsg').textContent = msg;
 }
-let authHostMode = 'dotcom';
-function authSetHost(m){
-  authHostMode = m;
-  document.getElementById('authHostDotcom').classList.toggle('on', m==='dotcom');
-  document.getElementById('authHostGhe').classList.toggle('on', m==='ghe');
-  const inp = document.getElementById('authHostUrl');
-  inp.style.display = m==='ghe' ? 'block' : 'none';
-  if(m==='ghe') inp.focus();
-}
-function authPrefillHost(h){
-  if(h && h.indexOf('github.com') === -1){ authSetHost('ghe'); document.getElementById('authHostUrl').value = h; }
-}
 async function startSignIn(){
-  let host = '';
-  if(authHostMode === 'ghe'){
-    host = document.getElementById('authHostUrl').value.trim();
-    if(!host){ document.getElementById('authMsg').textContent = 'Enter your GitHub Enterprise host URL (e.g. https://your-co.ghe.com).'; return; }
-  }
   const btn = document.getElementById('authBtn');
-  btn.disabled = true; btn.textContent = 'Starting login\u2026';
-  document.getElementById('authMsg').textContent = 'Starting GitHub device login \u2014 open the link below and enter the code.';
-  try{ await window.pywebview.api.sign_in(host); }catch(e){ btn.disabled=false; btn.textContent='Sign in'; }
+  btn.disabled = true; btn.textContent = 'Opening sign-in\u2026';
+  document.getElementById('authMsg').textContent = 'A GitHub sign-in window is opening \u2014 choose GitHub.com, Enterprise (GHE.com), or your provider there. (If a code appears below, enter it at the shown link.)';
+  try{ await window.pywebview.api.sign_in(); }catch(e){ btn.disabled=false; btn.textContent='Sign in'; }
 }
 function onAuthCode(url, code){
   const c = document.getElementById('authCode'); c.style.display = 'block';
