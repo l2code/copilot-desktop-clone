@@ -167,13 +167,14 @@
   .sugg span{font-size:12px;color:var(--text-dim)}
 
   /* messages */
-  .msg{display:flex;gap:14px;margin-bottom:26px}
-  .msg .m-avatar{width:28px;height:28px;border-radius:50%;flex-shrink:0;display:flex;align-items:center;justify-content:center}
-  .msg.user .m-avatar{background:linear-gradient(135deg,#2f81f7,#a371f7);color:#fff;font-weight:600;font-size:12px}
-  .msg.assistant .m-avatar{background:var(--bg-elev-2);border:1px solid var(--border)}
-  .msg.assistant .m-avatar svg{width:16px;height:16px;fill:var(--text)}
-  .m-body{flex:1;min-width:0;padding-top:2px}
-  .m-name{font-weight:600;font-size:13px;margin-bottom:4px}
+  .msg{display:flex;margin-bottom:18px}
+  .msg.user{justify-content:flex-start}
+  .msg.assistant{justify-content:flex-end}
+  .m-body{min-width:0}
+  .msg.user .m-body{max-width:78%}
+  .msg.assistant .m-body{max-width:90%}
+  .msg.user .m-content{background:#0a0d12;border:1px solid var(--border-soft);border-radius:12px;padding:9px 13px}
+  .msg.assistant .m-content{text-align:left}
   .m-content p{margin-bottom:10px}
   .m-content p:last-child{margin-bottom:0}
   .m-content code.inline{background:var(--bg-elev-2);border:1px solid var(--border-soft);
@@ -789,20 +790,39 @@ function insertCodeBlock(){
   autoGrow(ta); toggleSend();
 }
 
-// ===== Slash-command autocomplete (Copilot's own commands) =====
-let SLASH = [];                 // populated live from Copilot's commands.changed
+// ===== Slash-command autocomplete =====
+// App commands always work; any commands Copilot registers (commands.changed)
+// get merged in. The SDK does not expose the CLI's built-in REPL slash commands
+// for a plain session, so these app commands are the reliable baseline.
+const APP_COMMANDS = [
+  {cmd:'/new',      desc:'Start a new chat',     run:()=>newChat()},
+  {cmd:'/clear',    desc:'Clear this chat',      run:()=>newChat()},
+  {cmd:'/usage',    desc:'Show Copilot usage',   run:()=>openUsage()},
+  {cmd:'/settings', desc:'Open settings',        run:()=>openSettings()},
+  {cmd:'/help',     desc:'List slash commands',  run:()=>showSlashHelp()},
+];
+let SLASH = APP_COMMANDS.slice();
 let commandsLoaded = false;
 let slashOpen=false, slashItems=[], slashIdx=0;
 async function loadCommands(){
-  if(!backendReady) return;
-  try{
-    const cmds = (await window.pywebview.api.get_commands()) || [];
-    SLASH = cmds.map(c=>({
-      cmd: c.name.startsWith('/') ? c.name : ('/' + c.name),
-      desc: c.description || ''
-    }));
-    commandsLoaded = SLASH.length > 0;
-  }catch(e){ /* leave SLASH as-is */ }
+  let live = [];
+  if(backendReady){
+    try{
+      const cmds = (await window.pywebview.api.get_commands()) || [];
+      live = cmds.map(c=>({ cmd: c.name.startsWith('/') ? c.name : ('/' + c.name), desc: c.description || '' }));
+    }catch(e){ /* ignore */ }
+  }
+  const have = new Set(APP_COMMANDS.map(c=>c.cmd));
+  SLASH = APP_COMMANDS.concat(live.filter(c=>!have.has(c.cmd)));
+  commandsLoaded = true;
+}
+function showSlashHelp(){
+  const inner = document.getElementById('threadInner');
+  if(!started){ inner.innerHTML=''; started=true; }
+  const t = assistantShell();
+  t.innerHTML = '<p><strong>Slash commands</strong></p>' +
+    SLASH.map(c=>`<p><code class="inline">${escapeHtml(c.cmd)}</code> — ${escapeHtml(c.desc||'Copilot command')}</p>`).join('');
+  scrollDown();
 }
 function closeSlash(){ document.getElementById('slashMenu').classList.remove('open'); slashOpen=false; }
 function updateSlash(){
@@ -832,10 +852,8 @@ function pickSlash(i){
   const c = slashItems[i]; if(!c) return;
   closeSlash();
   const input = document.getElementById('input');
-  // Copilot commands are sent to the agent — drop it in the box so the user can
-  // add arguments, then Enter sends it.
-  input.value = c.cmd + ' ';
-  autoGrow(input); input.focus(); toggleSend();
+  if(c.run){ input.value=''; autoGrow(input); toggleSend(); c.run(); }
+  else { input.value = c.cmd + ' '; autoGrow(input); input.focus(); toggleSend(); }
 }
 function quickAsk(text){
   const input = document.getElementById('input');
@@ -861,8 +879,7 @@ function addUserMessage(text, _replay, attNames){
     atts = '<div class="msg-atts">' +
       attNames.map(n=>`<span class="chip">${clipSvg()}${escapeHtml(n)}</span>`).join('') + '</div>';
   }
-  div.innerHTML = `<div class="m-avatar">RX</div>
-    <div class="m-body"><div class="m-name">You</div>
+  div.innerHTML = `<div class="m-body">
     <div class="m-content">${text ? `<p>${escapeHtml(text)}</p>` : ''}${atts}</div></div>`;
   inner.appendChild(div);
   scrollDown();
@@ -872,8 +889,7 @@ function assistantShell(){
   const inner = document.getElementById('threadInner');
   const div = document.createElement('div');
   div.className='msg assistant';
-  div.innerHTML = `<div class="m-avatar"><svg viewBox="0 0 16 16"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zM5.3 5.7c.6-.7 1.5-1.1 2.7-1.1s2.1.4 2.7 1.1c.5.6.8 1.4.8 2.3v.4c0 .9-.3 1.7-.8 2.3-.6.7-1.5 1.1-2.7 1.1s-2.1-.4-2.7-1.1c-.5-.6-.8-1.4-.8-2.3V8c0-.9.3-1.7.8-2.3z"/></svg></div>
-    <div class="m-body"><div class="m-name">Copilot</div>
+  div.innerHTML = `<div class="m-body">
     <div class="m-content" id="streamTarget"></div></div>`;
   inner.appendChild(div);
   scrollDown();
@@ -1048,11 +1064,13 @@ function addMessageActions(container, raw){
   if(!raw || !raw.trim()) return;
   const bar = document.createElement('div');
   bar.className = 'msg-actions';
-  bar.innerHTML = '<span class="msg-act-btn" title="Copy"><svg viewBox="0 0 16 16"><path d="M5 2a2 2 0 00-2 2v7h1.5V4A.5.5 0 015 3.5h6V2H5z"/><path d="M7 5a2 2 0 00-2 2v6a2 2 0 002 2h5a2 2 0 002-2V7a2 2 0 00-2-2H7z"/></svg>Copy</span>';
+  const copyIcon = '<svg viewBox="0 0 16 16"><path d="M5 2a2 2 0 00-2 2v7h1.5V4A.5.5 0 015 3.5h6V2H5z"/><path d="M7 5a2 2 0 00-2 2v6a2 2 0 002 2h5a2 2 0 002-2V7a2 2 0 00-2-2H7z"/></svg>';
+  const okIcon = '<svg viewBox="0 0 16 16"><path d="M13.5 4.5l-7 7L3 8l1-1 2.5 2.5 6-6z"/></svg>';
+  bar.innerHTML = `<span class="msg-act-btn" title="Copy">${copyIcon}</span>`;
   const btn = bar.querySelector('.msg-act-btn');
   btn.addEventListener('click', ()=>{
     if(navigator.clipboard) navigator.clipboard.writeText(raw);
-    const t=btn.innerHTML; btn.innerHTML='\u2713 Copied'; setTimeout(()=>{ btn.innerHTML=t; },1500);
+    btn.innerHTML = okIcon; setTimeout(()=>{ btn.innerHTML = copyIcon; }, 1500);
   });
   container.appendChild(bar);
 }
