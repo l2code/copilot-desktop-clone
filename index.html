@@ -99,6 +99,15 @@
   .sidebar-footer .uname{font-size:13px;font-weight:500}
   .sidebar-footer .uplan{font-size:11px;color:var(--text-dim)}
   .sidebar-footer .usage-btn{margin-left:auto}
+  /* connection status dot next to the plan name */
+  .status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;
+    background:var(--text-faint);margin-right:6px;vertical-align:middle}
+  .status-dot.ok{background:var(--green)}
+  .status-dot.warn{background:#e3b341}
+  .status-dot.err{background:#da3633}
+  /* model selector + send button grouped at composer bottom-right */
+  .composer-right{display:flex;align-items:center;gap:8px}
+  .composer-right .model-select{padding:4px 8px;font-size:12.5px}
   .usage-bar{height:7px;background:var(--bg);border:1px solid var(--border-soft);
     border-radius:5px;overflow:hidden;margin:7px 0 5px}
   .usage-fill{height:100%;background:var(--accent);transition:width .3s}
@@ -119,7 +128,7 @@
   .model-select svg{width:13px;height:13px;fill:var(--text-dim);transition:transform .15s}
   .model-dropdown{position:relative}
   .model-dropdown.open .model-select svg{transform:rotate(180deg)}
-  .model-menu{position:absolute;top:calc(100% + 6px);left:0;min-width:210px;
+  .model-menu{position:absolute;bottom:calc(100% + 6px);right:0;left:auto;min-width:210px;
     background:var(--bg-elev);border:1px solid var(--border);border-radius:10px;padding:4px;
     z-index:50;box-shadow:0 8px 28px rgba(0,0,0,.45);display:none;max-height:340px;overflow-y:auto}
   .model-dropdown.open .model-menu{display:block}
@@ -272,7 +281,7 @@
         <div class="avatar">RX</div>
         <div>
           <div class="uname">rissac</div>
-          <div class="uplan">Copilot Pro</div>
+          <div class="uplan"><span class="status-dot" id="statusDot"></span>Copilot Pro</div>
         </div>
         <div class="icon-btn usage-btn" title="Copilot usage" onclick="openUsage()">
           <svg viewBox="0 0 16 16"><path d="M8 0a8 8 0 100 16A8 8 0 008 0zM5.3 5.7c.6-.7 1.5-1.1 2.7-1.1s2.1.4 2.7 1.1c.5.6.8 1.4.8 2.3v.4c0 .9-.3 1.7-.8 2.3-.6.7-1.5 1.1-2.7 1.1s-2.1-.4-2.7-1.1c-.5-.6-.8-1.4-.8-2.3V8c0-.9.3-1.7.8-2.3z"/></svg>
@@ -283,13 +292,7 @@
     <!-- Main -->
     <main class="main">
       <div class="topbar">
-        <div class="model-dropdown" id="modelDropdown">
-          <div class="model-select" onclick="toggleModelMenu(event)">
-            <span id="modelName">GPT-4.1</span>
-            <svg viewBox="0 0 16 16"><path d="M4.5 6l3.5 3.5L11.5 6z"/></svg>
-          </div>
-          <div class="model-menu" id="modelMenu"></div>
-        </div>
+        <div></div>
         <div class="topbar-actions">
           <div class="icon-btn" title="Toggle sidebar" onclick="toggleSidebar()"><svg viewBox="0 0 16 16"><path d="M8 1.5a6.5 6.5 0 100 13 6.5 6.5 0 000-13zM8 3a.75.75 0 01.75.75v3.94l2.53 1.46a.75.75 0 11-.75 1.3L7.6 8.6A.75.75 0 017.25 8V3.75A.75.75 0 018 3z"/></svg></div>
           <div class="icon-btn" title="Settings" onclick="openSettings()"><svg viewBox="0 0 16 16"><path d="M8 4.75a3.25 3.25 0 100 6.5 3.25 3.25 0 000-6.5zM6.25 8a1.75 1.75 0 113.5 0 1.75 1.75 0 01-3.5 0z"/></svg></div>
@@ -326,12 +329,20 @@
                 <div class="ctool" title="Attach file"><svg viewBox="0 0 16 16"><path d="M9.6 2.4a3 3 0 014.2 4.2l-6 6a1.9 1.9 0 01-2.7-2.7l5.3-5.3a.75.75 0 011 1l-5.3 5.3a.4.4 0 00.6.6l6-6a1.5 1.5 0 00-2.1-2.1l-6 6a2.6 2.6 0 003.7 3.7l5.3-5.3a.75.75 0 011 1l-5.3 5.3a4.1 4.1 0 01-5.8-5.8l6-6z"/></svg></div>
                 <div class="ctool" title="Add code context"><svg viewBox="0 0 16 16"><path d="M5.5 4.3 1.8 8l3.7 3.7-1 1L0 8l4.5-4.5zM10.5 11.7 14.2 8l-3.7-3.7 1-1L16 8l-4.5 4.5z"/></svg></div>
               </div>
-              <button class="send-btn" id="send" disabled onclick="sendMessage()">
-                <svg viewBox="0 0 16 16"><path d="M1.5 8 14 2 9.5 8 14 14z"/></svg>
-              </button>
+              <div class="composer-right">
+                <div class="model-dropdown" id="modelDropdown">
+                  <div class="model-select" onclick="toggleModelMenu(event)">
+                    <span id="modelName">auto</span>
+                    <svg viewBox="0 0 16 16"><path d="M4.5 6l3.5 3.5L11.5 6z"/></svg>
+                  </div>
+                  <div class="model-menu" id="modelMenu"></div>
+                </div>
+                <button class="send-btn" id="send" disabled onclick="sendMessage()">
+                  <svg viewBox="0 0 16 16"><path d="M1.5 8 14 2 9.5 8 14 14z"/></svg>
+                </button>
+              </div>
             </div>
           </div>
-          <div class="composer-hint">Copilot can make mistakes. Verify important info. · Simulated demo — no live model connected.</div>
         </div>
       </div>
     </main>
@@ -393,29 +404,35 @@ let curBuf = "";        // accumulated raw markdown for the current reply
 window.addEventListener('pywebviewready', initBackend);
 
 async function initBackend(){
-  showBanner('warn','Connecting to GitHub Copilot…');
+  setStatus('warn');
   try{
     const res = await window.pywebview.api.start();
     if(res && res.ok){
       backendReady = true;
+      setStatus('ok');
       if(res.models && res.models.length){
         MODELS = res.models; modelIdx = 0;
         document.getElementById('modelName').textContent = MODELS[0];
       }
-      showBanner('ok','Connected to GitHub Copilot — responses are live.');
-      document.querySelector('.composer-hint').textContent =
-        'Connected to GitHub Copilot via the official SDK.';
       await loadConversations();
       newChat();
     } else {
+      setStatus('err');
       showBanner('err','Copilot not connected: ' + ((res&&res.error)||'unknown error') +
         '. Sign in with the Copilot CLI, then restart the app.');
     }
   }catch(e){
+    setStatus('err');
     showBanner('err','Could not reach the backend: ' + e);
   }
 }
 
+// connection status dot next to the plan name (lower-left)
+function setStatus(kind){
+  const d = document.getElementById('statusDot');
+  if(d) d.className = 'status-dot ' + (kind || '');
+}
+// error/info banner (only used for failures now, not the connected state)
 function showBanner(kind, text){
   document.getElementById('bannerHost').innerHTML =
     `<div class="banner ${kind}"><span class="dot"></span><span>${escapeHtml(text)}</span></div>`;
