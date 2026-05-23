@@ -33,11 +33,13 @@ async def _approve_all(_request) -> PermissionRequestResult:
 
 
 class CopilotBackend:
-    def __init__(self, github_token: str | None = None, model: str | None = None):
+    def __init__(self, github_token: str | None = None, model: str | None = None,
+                 working_dir: str | None = None):
         # If github_token is None we fall back to the user's logged-in Copilot
         # session (the same auth `gh`/the CLI uses).
         self.github_token = github_token
         self.model = model
+        self.working_dir = working_dir   # folder Copilot may read/run commands in
         self.client: CopilotClient | None = None
         self.session = None
         self._on_delta = None
@@ -126,6 +128,7 @@ class CopilotBackend:
         cfg = SubprocessConfig(
             github_token=self.github_token,
             use_logged_in_user=(self.github_token is None),
+            cwd=self.working_dir,
         )
         self.client = CopilotClient(cfg, auto_start=False)
         await self.client.start()
@@ -133,13 +136,23 @@ class CopilotBackend:
         # Surfaces whether Copilot auth succeeded; raised to the UI if not.
         status = await self.client.get_auth_status()
 
-        self.session = await self.client.create_session(
+        self.session = await self._make_session()
+        return status
+
+    async def _make_session(self):
+        return await self.client.create_session(
             on_permission_request=self._handle_permission,
             model=self.model,
             streaming=True,
             on_event=self._handle_event,
+            working_directory=self.working_dir,
         )
-        return status
+
+    async def set_working_dir(self, path):
+        self.working_dir = path
+        self.commands = []
+        if self.client:
+            self.session = await self._make_session()
 
     def _handle_event(self, event):
         """Called by the SDK for every session event. Sync callback."""

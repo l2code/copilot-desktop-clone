@@ -87,7 +87,8 @@ class Api:
 
     def start(self, github_token: str | None = None):
         token = github_token or os.environ.get("GITHUB_TOKEN") or None
-        self.backend = CopilotBackend(github_token=token)
+        workdir = os.environ.get("COPILOT_WORKDIR") or os.path.expanduser("~")
+        self.backend = CopilotBackend(github_token=token, working_dir=workdir)
         self.backend.set_handlers(
             on_delta=lambda c: self._js("onCopilotDelta", c),
             on_done=lambda: self._js("onCopilotDone"),
@@ -102,7 +103,7 @@ class Api:
                 models = [getattr(m, "id", str(m)) for m in self._run(self.backend.list_models())]
             except Exception:
                 pass
-            return {"ok": True, "status": str(status), "models": models}
+            return {"ok": True, "status": str(status), "models": models, "workdir": self.backend.working_dir}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -140,6 +141,25 @@ class Api:
         try:
             with open(path, "r", encoding="utf-8", errors="replace") as f:
                 return {"ok": True, "content": f.read(max_bytes)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def pick_folder(self):
+        if not self.window:
+            return None
+        fd = getattr(getattr(webview, "FileDialog", None), "FOLDER", 20)
+        res = self.window.create_file_dialog(fd)
+        if not res:
+            return None
+        path = res[0] if isinstance(res, (list, tuple)) else res
+        return {"path": path}
+
+    def set_working_dir(self, path):
+        if not self.backend:
+            return {"ok": False, "error": "Backend not started"}
+        try:
+            self._run(self.backend.set_working_dir(path))
+            return {"ok": True, "workdir": path}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 

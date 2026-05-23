@@ -282,6 +282,13 @@
   }
   .composer textarea::placeholder{color:var(--text-faint)}
   .composer-row{display:flex;align-items:center;justify-content:space-between}
+  .composer-foot{max-width:760px;margin:8px auto 0;display:flex;gap:8px;align-items:center}
+  .foot-item{display:flex;align-items:center;gap:6px;max-width:440px;padding:4px 9px;
+    border:1px solid var(--border-soft);border-radius:7px;background:transparent;color:var(--text-dim);
+    font-size:12px;cursor:pointer;font-family:var(--font)}
+  .foot-item:hover{border-color:var(--border);color:var(--text);background:var(--bg-elev)}
+  .foot-item svg{width:13px;height:13px;fill:currentColor;flex-shrink:0}
+  .foot-item span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .composer-tools{display:flex;gap:2px}
   .ctool{width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;
     color:var(--text-dim);cursor:pointer}
@@ -430,6 +437,12 @@
               </div>
             </div>
           </div>
+          <div class="composer-foot">
+            <button class="foot-item" id="wdBtn" onclick="pickFolder()" title="Folder Copilot can read &amp; run commands in">
+              <svg viewBox="0 0 16 16"><path d="M1.75 2.5A1.75 1.75 0 000 4.25v7.5C0 12.99.78 14 1.75 14h12.5A1.75 1.75 0 0016 12.25V5.75A1.75 1.75 0 0014.25 4H7.5L6 2.5z"/></svg>
+              <span id="wdName">Choose a folder</span>
+            </button>
+          </div>
         </div>
       </div>
     </main>
@@ -538,6 +551,7 @@ async function initBackend(){
         MODELS = res.models; modelIdx = 0;
         document.getElementById('modelName').textContent = MODELS[0];
       }
+      if(res.workdir) setWdDisplay(res.workdir);
       await loadConversations();
       await loadCommands();
       newChat();
@@ -673,6 +687,26 @@ async function openConversation(id){
 
 // ===== Top-bar buttons =====
 function toggleSidebar(){ document.querySelector('.sidebar').classList.toggle('collapsed'); }
+
+// ===== Working folder (what Copilot can read / run commands in) =====
+function setWdDisplay(path){
+  const w = document.getElementById('wdName'); if(!w) return;
+  const base = String(path).replace(/[\\/]+$/,'').split(/[\\/]/).pop() || path;
+  w.textContent = base;
+  const b = document.getElementById('wdBtn'); if(b) b.title = 'Working folder: ' + path;
+}
+async function pickFolder(){
+  if(!backendReady) return;
+  let f; try{ f = await window.pywebview.api.pick_folder(); }catch(e){ return; }
+  if(!f || !f.path) return;
+  let res; try{ res = await window.pywebview.api.set_working_dir(f.path); }catch(e){ return; }
+  if(res && res.ok){
+    setWdDisplay(f.path);
+    newChat();   // session is recreated for the new folder
+    showBanner('ok','Copilot is now working in ' + f.path);
+    setTimeout(()=>{ const bn=document.getElementById('bannerHost'); if(bn) bn.innerHTML=''; }, 4000);
+  }
+}
 
 // ===== Right-side detail panel =====
 let panelRaw = '';
