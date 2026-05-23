@@ -548,6 +548,7 @@ function toggleModelMenu(e){
   renderModelMenu();
   document.getElementById('modelDropdown').classList.toggle('open');
 }
+function openModelMenu(){ renderModelMenu(); document.getElementById('modelDropdown').classList.add('open'); }
 function selectModel(i){
   modelIdx = i;
   const name = MODELS[i];
@@ -795,11 +796,17 @@ function insertCodeBlock(){
 // get merged in. The SDK does not expose the CLI's built-in REPL slash commands
 // for a plain session, so these app commands are the reliable baseline.
 const APP_COMMANDS = [
-  {cmd:'/new',      desc:'Start a new chat',     run:()=>newChat()},
-  {cmd:'/clear',    desc:'Clear this chat',      run:()=>newChat()},
-  {cmd:'/usage',    desc:'Show Copilot usage',   run:()=>openUsage()},
-  {cmd:'/settings', desc:'Open settings',        run:()=>openSettings()},
-  {cmd:'/help',     desc:'List slash commands',  run:()=>showSlashHelp()},
+  {cmd:'/new',       desc:'Start a new chat',          run:()=>newChat()},
+  {cmd:'/clear',     desc:'Clear this chat',           run:()=>newChat()},
+  {cmd:'/model',     desc:'Choose the model',          run:()=>openModelMenu()},
+  {cmd:'/attach',    desc:'Attach a file',             run:()=>attachFile()},
+  {cmd:'/code',      desc:'Insert a code block',       run:()=>insertCodeBlock()},
+  {cmd:'/stop',      desc:'Stop the current response', run:()=>{ if(streaming) stopStreaming(); }},
+  {cmd:'/search',    desc:'Search your chats',         run:()=>{ const e=document.getElementById('chatSearch'); if(e) e.focus(); }},
+  {cmd:'/sidebar',   desc:'Toggle the sidebar',        run:()=>toggleSidebar()},
+  {cmd:'/usage',     desc:'Show Copilot usage',        run:()=>openUsage()},
+  {cmd:'/settings',  desc:'Open settings',             run:()=>openSettings()},
+  {cmd:'/help',      desc:'List slash commands',       run:()=>showSlashHelp()},
 ];
 let SLASH = APP_COMMANDS.slice();
 let commandsLoaded = false;
