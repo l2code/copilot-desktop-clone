@@ -279,7 +279,8 @@ class Api:
             reverse=True,
         )
         return [
-            {"id": c["id"], "title": c.get("title", "Untitled"), "updated": c.get("updated", 0)}
+            {"id": c["id"], "title": c.get("title", "Untitled"),
+             "updated": c.get("updated", 0), "cwd": c.get("cwd")}
             for c in convs
         ]
 
@@ -294,14 +295,15 @@ class Api:
 
         data = _load_history()
         now = time.time()
+        cwd = self.backend.working_dir if self.backend else None
         for c in data["conversations"]:
             if c["id"] == conv_id:
-                c.update(title=title, messages=messages, updated=now)
+                c.update(title=title, messages=messages, updated=now, cwd=cwd)
                 break
         else:
             data["conversations"].append(
                 {"id": conv_id, "title": title, "messages": messages,
-                 "created": now, "updated": now}
+                 "created": now, "updated": now, "cwd": cwd}
             )
         _save_history(data)
         return {"ok": True}
