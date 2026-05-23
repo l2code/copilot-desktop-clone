@@ -333,6 +333,11 @@
     border-radius:7px;font-size:12.5px;cursor:pointer;font-family:var(--font)}
   .seg:hover{border-color:#484f58;color:var(--text)}
   .seg.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .perm-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
+  #permReason{margin-bottom:8px}
+  #permDetail{background:var(--code-bg);border:1px solid var(--border-soft);border-radius:8px;
+    padding:10px 12px;font-family:var(--mono);font-size:12.5px;white-space:pre-wrap;word-break:break-word;
+    max-height:200px;overflow:auto;color:var(--text);margin:0}
   .danger-btn{padding:7px 12px;border:1px solid #da363355;background:#da363315;color:#ff7b72;
     border-radius:8px;font-size:12.5px;cursor:pointer;font-family:var(--font)}
   .danger-btn:hover{background:#da363325}
@@ -445,6 +450,22 @@
   </div>
 </div>
 
+<!-- Permission request modal (Copilot wants to run a tool/command/file edit) -->
+<div class="modal-overlay" id="permModal">
+  <div class="modal">
+    <div class="modal-head"><span id="permTitle">Permission request</span></div>
+    <div class="modal-body">
+      <div class="set-val" id="permReason"></div>
+      <pre id="permDetail"></pre>
+      <div class="perm-actions">
+        <button class="seg" onclick="resolvePerm('reject')">Reject</button>
+        <button class="seg" id="permAllowAll" onclick="resolvePerm('approve-all')">Allow all this session</button>
+        <button class="seg on" onclick="resolvePerm('approve-once')">Allow</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Usage modal -->
 <div class="modal-overlay" id="usageModal">
   <div class="modal">
@@ -475,6 +496,13 @@
           <button class="seg" data-level="medium" onclick="setReasoning('medium')">Medium</button>
           <button class="seg" data-level="high"  onclick="setReasoning('high')">High</button>
           <button class="seg" data-level="xhigh" onclick="setReasoning('xhigh')">X-High</button>
+        </div>
+      </div>
+      <div class="set-row">
+        <div class="set-label">Tool permissions</div>
+        <div class="seg-group" id="approveRow">
+          <button class="seg" data-ap="ask" onclick="setAutoApprove(false)">Ask each time</button>
+          <button class="seg" data-ap="all" onclick="setAutoApprove(true)">Allow all</button>
         </div>
       </div>
       <div class="set-row">
@@ -579,6 +607,7 @@ let conversations = [];     // [{id,title,updated}] for the sidebar
 let currentConvId = null;
 let currentMessages = [];   // [{role:'user'|'assistant', content}]
 let currentReasoning = 'medium';
+let autoApprove = false;
 
 function newConvId(){ return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
@@ -736,6 +765,8 @@ function renderSettings(){
   });
   document.getElementById('settingsAccount').textContent =
     backendReady ? 'Connected to GitHub Copilot' : 'Demo mode (no backend)';
+  document.querySelectorAll('#approveRow .seg').forEach(b=>
+    b.classList.toggle('on', (b.dataset.ap==='all')===autoApprove));
 }
 function setReasoning(level){
   currentReasoning = level;
@@ -749,6 +780,34 @@ async function clearHistory(){
   }
   closeSettings();
   newChat();
+}
+function setAutoApprove(v){
+  autoApprove = v;
+  if(backendReady){ try{ window.pywebview.api.set_auto_approve(v); }catch(e){} }
+  renderSettings();
+}
+
+// ===== Permission-approval prompts (Copilot wants to run a tool/command/edit) =====
+let permQueue = [], permCurrent = null;
+function onPermissionRequest(p){ permQueue.push(p); if(!permCurrent) nextPerm(); }
+function nextPerm(){
+  const modal = document.getElementById('permModal');
+  permCurrent = permQueue.shift() || null;
+  if(!permCurrent){ modal.classList.remove('open'); return; }
+  document.getElementById('permTitle').textContent = permCurrent.title || 'Permission request';
+  const r = document.getElementById('permReason');
+  r.textContent = permCurrent.reason || ''; r.style.display = permCurrent.reason ? 'block' : 'none';
+  const d = document.getElementById('permDetail');
+  d.textContent = permCurrent.detail || ''; d.style.display = permCurrent.detail ? 'block' : 'none';
+  document.getElementById('permAllowAll').style.display = (permCurrent.canSession === false) ? 'none' : '';
+  modal.classList.add('open');
+}
+function resolvePerm(decision){
+  if(permCurrent && backendReady){
+    try{ window.pywebview.api.resolve_permission(permCurrent.id, decision); }catch(e){}
+  }
+  if(decision === 'approve-all') autoApprove = true;
+  nextPerm();
 }
 function autoGrow(el){ el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,160)+'px'; }
 function toggleSend(){

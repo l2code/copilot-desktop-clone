@@ -93,6 +93,7 @@ class Api:
             on_done=lambda: self._js("onCopilotDone"),
             on_error=lambda m: self._js("onCopilotError", m),
             on_activity=lambda d: self._js("onCopilotActivity", d),
+            on_permission=lambda p: self._js("onPermissionRequest", p),
         )
         try:
             status = self._run(self.backend.start())
@@ -123,6 +124,16 @@ class Api:
             return {"ok": True}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+    def resolve_permission(self, rid, decision):
+        if self.backend:
+            self.backend.resolve_permission(rid, decision)
+        return {"ok": True}
+
+    def set_auto_approve(self, value):
+        if self.backend:
+            self.backend.set_auto_approve(value)
+        return {"ok": True}
 
     def read_file(self, path, max_bytes=400000):
         """Read a text file for preview in the side panel."""

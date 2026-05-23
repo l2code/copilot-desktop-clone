@@ -14,6 +14,9 @@ API shapes here were verified against github-copilot-sdk 0.3.0.
 
 from __future__ import annotations
 
+import asyncio
+import uuid
+
 from copilot import CopilotClient, SubprocessConfig
 from copilot.generated.session_events import SessionEventType
 from copilot.session import PermissionRequestResult
@@ -43,13 +46,81 @@ class CopilotBackend:
         self._on_activity = None  # reasoning / tool / command activity
         self.last_quota = None  # latest quota seen via assistant.usage events
         self.commands = []      # Copilot slash commands from commands.changed events
+        self.auto_approve = False        # when True, permission requests are allowed silently
+        self._pending = {}               # request_id -> asyncio.Future awaiting a user decision
+        self._on_permission = None       # UI callback for a permission prompt
 
-    def set_handlers(self, on_delta, on_done, on_error, on_activity=None):
-        """Register UI callbacks. on_delta(text), on_done(), on_error(msg), on_activity(dict)."""
+    def set_handlers(self, on_delta, on_done, on_error, on_activity=None, on_permission=None):
+        """Register UI callbacks. on_delta(text), on_done(), on_error(msg), on_activity(dict), on_permission(dict)."""
         self._on_delta = on_delta
         self._on_done = on_done
         self._on_error = on_error
         self._on_activity = on_activity
+        self._on_permission = on_permission
+
+    def set_auto_approve(self, value: bool):
+        self.auto_approve = bool(value)
+
+    @staticmethod
+    def _perm_field(req, name, default=None):
+        obj = getattr(req, "permission_request", None) or getattr(req, "request", None) or req
+        return getattr(obj, name, default)
+
+    def _describe_permission(self, req):
+        k = self._perm_field(req, "kind", "")
+        kind = getattr(k, "value", str(k))
+        title = {
+            "shell": "Run a shell command", "write": "Edit a file", "read": "Read a file",
+            "url": "Access a URL", "mcp": "Use an MCP tool", "custom-tool": "Use a tool",
+            "memory": "Update memory", "hook": "Run a hook",
+        }.get(kind, "Permission request")
+        detail = (self._perm_field(req, "full_command_text")
+                  or self._perm_field(req, "file_name")
+                  or self._perm_field(req, "path") or "")
+        if not detail:
+            cmds = self._perm_field(req, "commands")
+            if cmds:
+                detail = ", ".join(getattr(c, "identifier", str(c)) for c in cmds)
+        if not detail:
+            urls = self._perm_field(req, "possible_urls")
+            if urls:
+                detail = ", ".join(getattr(u, "url", str(u)) for u in urls)
+        reason = self._perm_field(req, "intention") or self._perm_field(req, "reason") or ""
+        can_session = self._perm_field(req, "can_offer_session_approval", True)
+        return {"kind": kind, "title": title, "detail": str(detail),
+                "reason": str(reason), "canSession": bool(can_session)}
+
+    async def _handle_permission(self, req):
+        kind = getattr(self._perm_field(req, "kind", ""), "value", "")
+        # Auto-allow read-only requests and everything once the user trusts the session.
+        if self.auto_approve or kind == "read" or self._perm_field(req, "read_only", False):
+            return PermissionRequestResult(kind="approve-once")
+        if not self._on_permission:
+            return PermissionRequestResult(kind="approve-once")  # no UI present
+        loop = asyncio.get_event_loop()
+        fut = loop.create_future()
+        rid = uuid.uuid4().hex
+        self._pending[rid] = fut
+        payload = self._describe_permission(req)
+        payload["id"] = rid
+        try:
+            self._on_permission(payload)
+            decision = await asyncio.wait_for(fut, timeout=180)
+        except Exception:
+            decision = "user-not-available"
+        finally:
+            self._pending.pop(rid, None)
+        if decision == "approve-all":
+            self.auto_approve = True
+            decision = "approve-once"
+        if decision not in ("approve-once", "reject"):
+            decision = "user-not-available"
+        return PermissionRequestResult(kind=decision)
+
+    def resolve_permission(self, rid, decision):
+        fut = self._pending.get(rid)
+        if fut and not fut.done():
+            fut.get_loop().call_soon_threadsafe(fut.set_result, decision)
 
     async def start(self):
         cfg = SubprocessConfig(
@@ -63,7 +134,7 @@ class CopilotBackend:
         status = await self.client.get_auth_status()
 
         self.session = await self.client.create_session(
-            on_permission_request=_approve_all,
+            on_permission_request=self._handle_permission,
             model=self.model,
             streaming=True,
             on_event=self._handle_event,
