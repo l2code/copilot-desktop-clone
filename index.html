@@ -737,6 +737,26 @@ document.addEventListener('keydown', (e)=>{
     return;
   }
 });
+// Paste an image from the clipboard -> BlobAttachment
+(function(){
+  const ta = document.getElementById('input'); if(!ta) return;
+  ta.addEventListener('paste', (e)=>{
+    const items = e.clipboardData && e.clipboardData.items; if(!items) return;
+    for(const it of items){
+      if(it.type && it.type.indexOf('image/') === 0){
+        const file = it.getAsFile(); if(!file) continue;
+        const reader = new FileReader();
+        reader.onload = ()=>{
+          const ext = (file.type || 'image/png').split('/')[1] || 'png';
+          pendingAttachments.push({type:'blob', data:reader.result, mimeType:file.type || 'image/png', displayName:'pasted-image.' + ext});
+          renderAttachments(); toggleSend();
+        };
+        reader.readAsDataURL(file);
+        e.preventDefault();
+      }
+    }
+  });
+})();
 (function(){
   const t = document.getElementById('thread');
   if(!t) return;
@@ -957,7 +977,17 @@ async function openFileInPanel(path, name){
   const body = (lang==='python') ? highlightPython(res.content) : escapeHtml(res.content);
   document.getElementById('spBody').innerHTML = `<div class="sp-filemeta">${escapeHtml(path)}</div><pre>${body}</pre>`;
 }
-function previewAttachment(i){ const a = pendingAttachments[i]; if(a) openFileInPanel(a.path, a.displayName); }
+function previewAttachment(i){
+  const a = pendingAttachments[i]; if(!a) return;
+  if(a.type === 'blob'){
+    document.getElementById('spTitle').textContent = a.displayName || 'Image';
+    panelRaw = '';
+    document.getElementById('spBody').innerHTML = `<div style="padding:16px"><img style="max-width:100%;border-radius:8px" src="${a.data}"></div>`;
+    document.getElementById('sidePanel').classList.add('open');
+    return;
+  }
+  openFileInPanel(a.path, a.displayName);
+}
 
 // ===== Usage / quota panel =====
 function closeUsage(){ document.getElementById('usageModal').classList.remove('open'); }
@@ -1147,10 +1177,17 @@ function removeAttachment(i){ pendingAttachments.splice(i,1); renderAttachments(
 async function attachFile(){
   if(!backendReady) return;            // file picker comes from the desktop shell
   let f; try{ f = await window.pywebview.api.pick_file(); }catch(e){ return; }
-  if(f && f.path){
-    pendingAttachments.push({type:'file', path:f.path, displayName:f.name});
-    renderAttachments(); toggleSend();
+  if(!f || !f.path) return;
+  if(/\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name || '')){
+    let img; try{ img = await window.pywebview.api.read_image(f.path); }catch(e){ img = null; }
+    if(img && img.ok){
+      pendingAttachments.push({type:'blob', data:'data:'+img.mimeType+';base64,'+img.data,
+                               mimeType:img.mimeType, displayName:img.name || f.name});
+      renderAttachments(); toggleSend(); return;
+    }
   }
+  pendingAttachments.push({type:'file', path:f.path, displayName:f.name});
+  renderAttachments(); toggleSend();
 }
 function insertCodeBlock(){
   const ta = document.getElementById('input');

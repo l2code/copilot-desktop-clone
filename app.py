@@ -187,6 +187,20 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def read_image(self, path, max_bytes=8000000):
+        """Read an image file and return it base64-encoded for a BlobAttachment."""
+        import base64, mimetypes
+        try:
+            with open(path, "rb") as f:
+                raw = f.read(max_bytes + 1)
+            if len(raw) > max_bytes:
+                return {"ok": False, "error": "Image too large (over 8 MB)"}
+            mime = mimetypes.guess_type(path)[0] or "image/png"
+            return {"ok": True, "data": base64.b64encode(raw).decode("ascii"),
+                    "mimeType": mime, "name": os.path.basename(path)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def pick_file(self):
         """Open a native file picker and return the chosen file (no admin needed)."""
         if not self.window:
