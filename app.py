@@ -159,6 +159,21 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def get_mcp_status(self):
+        if not self.backend:
+            return {"ok": True, "status": {}, "disabled": []}
+        return {"ok": True, "status": dict(self.backend.mcp_status),
+                "disabled": list(self.backend.mcp_disabled)}
+
+    def set_mcp_enabled(self, name, enabled):
+        if not self.backend:
+            return {"ok": False, "error": "Backend not started"}
+        try:
+            self._run(self.backend.set_mcp_enabled(name, bool(enabled)))
+            return {"ok": True}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def resolve_permission(self, rid, decision):
         if self.backend:
             self.backend.resolve_permission(rid, decision)

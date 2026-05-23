@@ -43,6 +43,8 @@ class CopilotBackend:
         self.working_dir = working_dir   # folder Copilot may read/run commands in
         self.instructions = ""           # custom instructions (system message, append mode)
         self.mcp_servers = None          # dict[str, MCPServerConfig] for MCP tools
+        self.mcp_status = {}             # name -> {status, error} from session events
+        self.mcp_disabled = set()        # names the user has toggled off
         self.mode = "interactive"        # interactive | plan | autopilot
         # Per-kind permission policy (allow | ask | deny). read is always allowed.
         self.perm_rules = {"write": "ask", "shell": "ask", "url": "ask",
@@ -212,7 +214,9 @@ class CopilotBackend:
         if self.instructions:
             kwargs["system_message"] = {"mode": "append", "content": self.instructions}
         if self.mcp_servers:
-            kwargs["mcp_servers"] = self.mcp_servers
+            active = {n: c for n, c in self.mcp_servers.items() if n not in self.mcp_disabled}
+            if active:
+                kwargs["mcp_servers"] = active
         sess = await self.client.create_session(**kwargs)
         if self.mode and self.mode != "interactive":
             try:
@@ -236,6 +240,18 @@ class CopilotBackend:
 
     async def set_mcp_servers(self, servers):
         self.mcp_servers = servers or None
+        # drop disabled/status entries for servers no longer present
+        names = set((servers or {}).keys())
+        self.mcp_disabled &= names
+        self.mcp_status = {k: v for k, v in self.mcp_status.items() if k in names}
+        await self._recreate()
+
+    async def set_mcp_enabled(self, name, enabled):
+        if enabled:
+            self.mcp_disabled.discard(name)
+        else:
+            self.mcp_disabled.add(name)
+            self.mcp_status[name] = {"status": "disabled", "error": None}
         await self._recreate()
 
     def _handle_event(self, event):
@@ -299,6 +315,20 @@ class CopilotBackend:
             elif t == SessionEventType.COMMAND_EXECUTE:
                 if self._on_activity:
                     self._on_activity({"kind": "command", "cmd": getattr(event.data, "command", ""), "name": getattr(event.data, "command_name", "")})
+            elif t == SessionEventType.SESSION_MCP_SERVERS_LOADED:
+                for srv in (getattr(event.data, "servers", None) or []):
+                    self.mcp_status[srv.name] = {
+                        "status": getattr(getattr(srv, "status", None), "value", None),
+                        "error": getattr(srv, "error", None)}
+                if self._on_activity:
+                    self._on_activity({"kind": "mcp_status", "servers": self.mcp_status})
+            elif t == SessionEventType.SESSION_MCP_SERVER_STATUS_CHANGED:
+                nm = getattr(event.data, "server_name", None)
+                st = getattr(getattr(event.data, "status", None), "value", None)
+                if nm:
+                    self.mcp_status.setdefault(nm, {})["status"] = st
+                if self._on_activity:
+                    self._on_activity({"kind": "mcp_status", "servers": self.mcp_status})
             elif t == SessionEventType.SESSION_USAGE_INFO:
                 d = event.data
                 if self._on_activity:
