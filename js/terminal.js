@@ -1,10 +1,13 @@
 // ===== Integrated terminal =====
 // A toggleable panel that runs commands in the active project folder via the
-// backend (PowerShell on Windows, bash elsewhere). Output streams in through
-// window.onTermOutput / window.onTermDone, which app.py calls.
+// backend (PowerShell on Windows, bash elsewhere). It behaves like a single
+// terminal window: output and the live input line share one scrolling area, so
+// the cursor sits inline at the bottom rather than in a separate textbox.
+// Output streams in through window.onTermOutput / window.onTermDone (app.py).
 let termOpen = false;
 let termBusy = false;
 let termCwd = '';
+let termShellName = 'Terminal';
 let termHistory = [];   // command history for Up/Down recall
 let termHistIdx = -1;
 
@@ -25,29 +28,51 @@ async function openTerminal(){
   try{
     const r = await window.pywebview.api.term_init();
     if(r && r.ok){
-      termCwd = r.cwd || '';
-      const sh = document.getElementById('termShell'); if(sh) sh.textContent = r.shell || 'Terminal';
-      termSetCwd(termCwd);
+      termShellName = r.shell || 'Terminal';
+      const sh = document.getElementById('termShell'); if(sh) sh.textContent = termShellName;
+      termSetCwd(r.cwd || '');
     }
   }catch(e){ /* non-fatal */ }
-  const inp = document.getElementById('termInput'); if(inp) setTimeout(()=>inp.focus(), 30);
+  termFocus();
 }
 
-// Reflect the active folder in the terminal prompt/header.
+// PowerShell-style prompt, falls back to $ for bash.
+function termPromptText(){
+  if(/power|pwsh/i.test(termShellName)) return 'PS ' + (termCwd || '') + '> ';
+  return (termCwd || '') + '$ ';
+}
+function updateLivePrompt(){
+  const p = document.getElementById('termPrompt'); if(p) p.textContent = termPromptText();
+}
+
+// Reflect the active folder in the prompt + header.
 function termSetCwd(path){
   termCwd = path || '';
   const lbl = document.getElementById('termCwdLabel');
   if(lbl){ lbl.textContent = termCwd; lbl.title = termCwd; }
+  updateLivePrompt();
 }
 
-function termClear(){ const o = document.getElementById('termOut'); if(o) o.innerHTML = ''; }
+function termFocus(){
+  const inp = document.getElementById('termInput');
+  if(inp && !inp.disabled) setTimeout(()=>inp.focus(), 0);
+}
 
+function termClear(){
+  const o = document.getElementById('termOut'); const live = document.getElementById('termLive');
+  if(!o) return;
+  while(o.firstChild && o.firstChild !== live) o.removeChild(o.firstChild);
+  termFocus();
+}
+
+// Append output just above the live input line so the prompt stays at the bottom.
 function termWrite(text, cls){
-  const o = document.getElementById('termOut'); if(!o) return;
+  const o = document.getElementById('termOut'); const live = document.getElementById('termLive');
+  if(!o) return;
   const span = document.createElement('span');
   if(cls) span.className = cls;
   span.textContent = text;
-  o.appendChild(span);
+  if(live) o.insertBefore(span, live); else o.appendChild(span);
   o.scrollTop = o.scrollHeight;
 }
 
@@ -55,7 +80,8 @@ function termSetBusy(on){
   termBusy = on;
   const stop = document.getElementById('termStop'); if(stop) stop.disabled = !on;
   const inp = document.getElementById('termInput'); if(inp) inp.disabled = on;
-  if(!on){ const i = document.getElementById('termInput'); if(i) setTimeout(()=>i.focus(), 10); }
+  const live = document.getElementById('termLive'); if(live) live.style.display = on ? 'none' : 'flex';
+  if(!on){ updateLivePrompt(); termFocus(); }
 }
 
 function runTermCommand(){
@@ -63,8 +89,8 @@ function runTermCommand(){
   const inp = document.getElementById('termInput');
   const cmd = inp.value;
   if(!cmd.trim()){ return; }
-  // echo the command with a prompt line, then run it
-  termWrite((termCwd ? termCwd + ' ' : '') + '> ', 'term-prompt-echo');
+  // freeze the typed line into the scrollback (prompt + command), then run it
+  termWrite(termPromptText(), 'term-prompt-echo');
   termWrite(cmd + '\n', 'term-cmd');
   termHistory.push(cmd); termHistIdx = termHistory.length;
   inp.value = '';
@@ -83,12 +109,12 @@ function termInterrupt(){
 // Called by app.py as output streams in.
 function onTermOutput(text){ termWrite(text); }
 function onTermDone(code){
-  termSetBusy(false);
-  // refresh cwd (a `cd` may have changed it) and show a subtle exit marker on failure
   if(typeof code === 'number' && code !== 0){ termWrite('[exit ' + code + ']\n', 'term-sys'); }
+  // a `cd` may have changed the folder -- refresh the prompt before re-enabling
   if(backendReady){
-    try{ window.pywebview.api.term_cwd().then(r=>{ if(r && r.ok) termSetCwd(r.cwd); }); }catch(e){}
+    try{ window.pywebview.api.term_cwd().then(r=>{ if(r && r.ok) termCwd = r.cwd; termSetBusy(false); }); return; }catch(e){}
   }
+  termSetBusy(false);
 }
 
 function onTermKey(e){

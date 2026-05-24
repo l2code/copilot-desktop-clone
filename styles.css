@@ -449,16 +449,17 @@
   .term-actions{display:flex;align-items:center;gap:6px}
   .term-actions .seg{padding:3px 9px;font-size:11.5px}
   .term-out{flex:1;overflow:auto;padding:10px 14px;font-family:var(--mono);font-size:12.5px;
-    line-height:1.5;color:#c9d1d9;white-space:pre-wrap;word-break:break-word}
+    line-height:1.5;color:#c9d1d9;white-space:pre-wrap;word-break:break-word;cursor:text}
   .term-prompt-echo{color:var(--accent)}
-  .term-cmd{color:#e6edf3;font-weight:600}
+  .term-cmd{color:#e6edf3}
   .term-sys{color:var(--text-dim)}
   .term-err{color:#ff7b72}
-  .term-inputrow{display:flex;align-items:center;gap:8px;padding:8px 14px;border-top:1px solid var(--border-soft)}
-  .term-prompt{color:var(--accent);font-family:var(--mono);font-size:13px}
-  .term-input{flex:1;background:transparent;border:0;outline:none;color:#e6edf3;
-    font-family:var(--mono);font-size:12.5px}
-  .term-input:disabled{opacity:.6}
+  /* live input sits inline at the bottom of the same scroll area (no separate box) */
+  .term-liveline{display:flex;align-items:baseline}
+  .term-prompt{color:var(--accent);white-space:pre-wrap;word-break:break-all}
+  .term-input{flex:1;min-width:40px;background:transparent;border:0;outline:none;color:#e6edf3;
+    font-family:var(--mono);font-size:12.5px;line-height:1.5;padding:0;caret-color:var(--accent)}
+  .term-input:disabled{opacity:.7}
 
   @media (max-width:900px){
     .sidebar{width:232px}
