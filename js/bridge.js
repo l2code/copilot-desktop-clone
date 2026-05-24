@@ -17,11 +17,13 @@ async function initBackend(){
   // Show saved conversations immediately (history file; independent of the session).
   try{ conversations = (await window.pywebview.api.list_conversations()) || []; }catch(e){ conversations = []; }
   renderSidebar();
+  showBanner('warn', 'Connecting to GitHub Copilot…');   // feedback while start() runs (can stall behind a proxy)
   try{
     const res = await window.pywebview.api.start();
     if(res && res.ok){
       backendReady = true;
       setStatus('ok');
+      document.getElementById('bannerHost').innerHTML = '';
       if(res.models && res.models.length){
         MODELS = res.models; modelIdx = 0;
         document.getElementById('modelName').textContent = MODELS[0];

@@ -109,6 +109,13 @@ Copilot SDK subprocess) uses standard proxy environment variables —
   Copy `example.env` → `.env` and add your proxy lines (it's gitignored). Or set
   `COPILOT_ENV_FILE` (see `run.bat`) to point at an existing `.env` without
   copying it. Existing environment variables are never overridden.
+- If you use the Copilot CLI's `COPILOT_PROXY_USERNAME` / `COPILOT_PROXY_PASSWORD`
+  / `COPILOT_PROXY_HOST`, the app translates them into the standard proxy env it
+  needs (URL-encoded `HTTP(S)_PROXY` plus `NODE_USE_ENV_PROXY` / `NODE_USE_SYSTEM_CA`,
+  mirroring a `run-copilot.ps1` launcher) — the Node-based copilot binary needs
+  those flags to use the proxy and trust the corporate CA.
+- Set `COPILOT_EXE` to your installed `copilot.exe` to run that binary (already
+  proxy-configured and signed in) instead of the bundled one.
 
 ## Notes / next steps
 - Tool permissions default to asking before file edits, shell commands, URL

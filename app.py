@@ -76,6 +76,37 @@ def _load_env_file() -> None:
             pass  # never let env loading break startup
 
 
+def _apply_copilot_proxy() -> None:
+    """Mirror run-copilot.ps1: turn the Copilot CLI's COPILOT_PROXY_* settings into
+    the standard proxy environment the (Node-based) copilot binary actually reads.
+
+    The CLI binary doesn't read COPILOT_PROXY_* itself — a launcher script builds
+    an http://user:pass@host URL and exports HTTP(S)_PROXY plus the NODE_* flags
+    that make Node honor the env proxy and trust the corporate root CA. We do the
+    same so the bundled/`COPILOT_EXE` subprocess can reach GitHub behind the proxy.
+
+    No-op if no proxy host is configured. Existing HTTP(S)_PROXY is respected."""
+    host = os.environ.get("COPILOT_PROXY_HOST")
+    if not host:
+        return
+    if not (os.environ.get("HTTPS_PROXY") or os.environ.get("https_proxy")):
+        from urllib.parse import quote
+        user = os.environ.get("COPILOT_PROXY_USERNAME", "")
+        pwd = os.environ.get("COPILOT_PROXY_PASSWORD", "")
+        auth = f"{quote(user, safe='')}:{quote(pwd, safe='')}@" if (user or pwd) else ""
+        proxy_url = f"http://{auth}{host}"
+        for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"):
+            os.environ[k] = proxy_url
+    # Node-based copilot CLI: honor the env proxy and trust the OS/corporate CA.
+    os.environ.setdefault("NODE_USE_ENV_PROXY", "1")
+    os.environ.setdefault("NODE_USE_SYSTEM_CA", "1")
+    # Keep any NO_PROXY bypass list consistent across upper/lower case.
+    no_proxy = os.environ.get("NO_PROXY") or os.environ.get("no_proxy")
+    if no_proxy:
+        os.environ["NO_PROXY"] = no_proxy
+        os.environ["no_proxy"] = no_proxy
+
+
 def _load_prefs() -> dict:
     try:
         with open(PREFS_FILE, encoding="utf-8") as f:
@@ -541,7 +572,8 @@ def main():
         i = sys.argv.index("--host")
         if i + 1 < len(sys.argv):
             os.environ["COPILOT_HOST"] = sys.argv[i + 1]
-    _load_env_file()   # pull proxy / env settings from a .env so the SDK inherits them
+    _load_env_file()       # pull COPILOT_PROXY_* / COPILOT_EXE / etc. from a .env
+    _apply_copilot_proxy()  # translate COPILOT_PROXY_* -> HTTP(S)_PROXY + NODE_* flags
     api = Api()
     window = webview.create_window(
         "Copilot Desktop",

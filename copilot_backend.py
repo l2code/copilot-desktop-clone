@@ -15,6 +15,7 @@ API shapes here were verified against github-copilot-sdk 0.3.0.
 from __future__ import annotations
 
 import asyncio
+import os
 import uuid
 
 from copilot import CopilotClient, SubprocessConfig
@@ -150,11 +151,18 @@ class CopilotBackend:
         return status
 
     def _subprocess_cfg(self):
-        return SubprocessConfig(
+        kwargs = dict(
             github_token=self.github_token,
             use_logged_in_user=(self.github_token is None),
             cwd=self.working_dir,
         )
+        # If COPILOT_EXE points at an installed copilot binary, use it instead of
+        # the bundled one. That binary is already configured for the corporate
+        # proxy (COPILOT_PROXY_*) and signed in, so it Just Works behind the proxy.
+        cli_path = os.environ.get("COPILOT_EXE")
+        if cli_path and os.path.isfile(cli_path):
+            kwargs["cli_path"] = cli_path
+        return SubprocessConfig(**kwargs)
 
     async def set_mode(self, mode):
         """Switch agent mode live (no restart) via the per-session mode RPC."""
