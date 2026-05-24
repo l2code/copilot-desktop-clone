@@ -140,14 +140,28 @@ class CopilotBackend:
             fut.get_loop().call_soon_threadsafe(fut.set_result, decision)
 
     async def start(self):
+        # Each step is bounded so a proxy/network stall surfaces a specific error
+        # in the UI instead of hanging forever. The labels match the diagnose.py steps.
         self.client = CopilotClient(self._subprocess_cfg(), auto_start=False)
-        await self.client.start()
-        status = await self.client.get_auth_status()
+        try:
+            await asyncio.wait_for(self.client.start(), timeout=45)
+        except asyncio.TimeoutError:
+            raise RuntimeError("Timed out launching the Copilot CLI (check COPILOT_EXE path / proxy).")
+        try:
+            status = await asyncio.wait_for(self.client.get_auth_status(), timeout=45)
+        except asyncio.TimeoutError:
+            raise RuntimeError("Timed out checking sign-in status (proxy or auth handshake stalled).")
         self.authenticated = bool(getattr(status, "isAuthenticated", False))
         self.login = getattr(status, "login", None)
         # Only create a session once authenticated -- an unauthenticated session is
         # created but fails on send ("Session was not created with auth info").
-        self.session = await self._make_session() if self.authenticated else None
+        if self.authenticated:
+            try:
+                self.session = await asyncio.wait_for(self._make_session(), timeout=60)
+            except asyncio.TimeoutError:
+                raise RuntimeError("Signed in, but timed out creating a session (proxy reach to GitHub).")
+        else:
+            self.session = None
         return status
 
     def _subprocess_cfg(self):
