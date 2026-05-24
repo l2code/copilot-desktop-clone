@@ -85,13 +85,10 @@ class Api:
     def __init__(self):
         self.window = None
         self.backend: CopilotBackend | None = None
-        # Integrated terminal (PowerShell on Windows). Streams to the UI; its cwd
-        # tracks the active project folder.
-        self.terminal = Terminal()
-        self.terminal.set_handlers(
-            on_output=lambda t: self._js("onTermOutput", t),
-            on_done=lambda code: self._js("onTermDone", code),
-        )
+        # Integrated terminals (PowerShell on Windows). Multiple tabs, each its own
+        # shell; a new tab opens in the active project folder. Keyed by string id.
+        self.terminals: dict[str, Terminal] = {}
+        self._term_seq = 0
         # The SDK is async; run one event loop in a background thread and
         # marshal coroutines onto it from the (sync) JS-facing methods.
         self.loop = asyncio.new_event_loop()
@@ -111,6 +108,19 @@ class Api:
         payload = ",".join(json.dumps(a) for a in args)
         self.window.evaluate_js(f"window.{fn} && window.{fn}({payload})")
 
+    def _make_terminal(self) -> str:
+        """Create a new terminal in the active project folder; return its id."""
+        cwd = (self.backend.working_dir if self.backend else None) or os.path.expanduser("~")
+        self._term_seq += 1
+        tid = f"t{self._term_seq}"
+        t = Terminal(cwd)
+        t.set_handlers(
+            on_output=lambda text, _id=tid: self._js("onTermOutput", _id, text),
+            on_done=lambda code, _id=tid: self._js("onTermDone", _id, code),
+        )
+        self.terminals[tid] = t
+        return tid
+
     # ----- exposed to the UI -----
 
     def start(self, github_token: str | None = None):
@@ -122,7 +132,6 @@ class Api:
                    or os.path.expanduser("~"))
         if not (workdir and os.path.isdir(workdir)):   # saved folder gone? fall back to home
             workdir = os.path.expanduser("~")
-        self.terminal.set_cwd(workdir)
         self.backend = CopilotBackend(github_token=token, working_dir=workdir)
         self.backend.set_handlers(
             on_delta=lambda c: self._js("onCopilotDelta", c),
@@ -249,7 +258,6 @@ class Api:
             return {"ok": False, "error": "Backend not started"}
         try:
             self._run(self.backend.set_working_dir(path))
-            self.terminal.set_cwd(path)   # keep the integrated terminal in the same folder
             if remember:
                 try:
                     prefs = _load_prefs(); prefs["workdir"] = path; _save_prefs(prefs)
@@ -259,23 +267,37 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
-    # ----- integrated terminal -----
+    # ----- integrated terminals (tabbed) -----
 
-    def term_init(self):
-        """Return the terminal's current folder + shell name (for the prompt)."""
-        return {"ok": True, "cwd": self.terminal.cwd, "shell": self.terminal.shell_name}
+    def term_new(self):
+        """Open a new terminal tab in the active project folder."""
+        tid = self._make_terminal()
+        t = self.terminals[tid]
+        return {"ok": True, "id": tid, "cwd": t.cwd, "shell": t.shell_name}
 
-    def term_run(self, command):
-        """Run a command in the active project folder; output streams via onTermOutput."""
-        self.terminal.run(command)
+    def term_run(self, tid, command):
+        """Run a command in the given tab; output streams via onTermOutput(id, text)."""
+        t = self.terminals.get(tid)
+        if not t:
+            return {"ok": False, "error": "No such terminal"}
+        t.run(command)
         return {"ok": True}
 
-    def term_interrupt(self):
-        self.terminal.interrupt()
+    def term_interrupt(self, tid):
+        t = self.terminals.get(tid)
+        if t:
+            t.interrupt()
         return {"ok": True}
 
-    def term_cwd(self):
-        return {"ok": True, "cwd": self.terminal.cwd}
+    def term_cwd(self, tid):
+        t = self.terminals.get(tid)
+        return {"ok": bool(t), "cwd": t.cwd if t else ""}
+
+    def term_close(self, tid):
+        t = self.terminals.pop(tid, None)
+        if t:
+            t.interrupt()
+        return {"ok": True}
 
     def read_image(self, path, max_bytes=8000000):
         """Read an image file and return it base64-encoded for a BlobAttachment."""
