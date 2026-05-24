@@ -131,12 +131,20 @@ function renderPermRules(){
 function setPerm(k,p){ permRules[k]=p; if(backendReady){ try{ window.pywebview.api.set_perm_rules(permRules); }catch(e){} } renderPermRules(); }
 function closeSettings(){ document.getElementById('settingsModal').classList.remove('open'); }
 // Custom instructions and MCP servers are now two separate, focused dialogs.
+let _instrOrig = '';   // instructions text as loaded, to detect unsaved changes
 async function openInstructions(){
   closeSettings();
   document.getElementById('instrModal').classList.add('open');
   if(backendReady){
-    try{ const r = await window.pywebview.api.get_instructions(); document.getElementById('instrText').value = (r && r.text) || ''; }catch(e){}
-  }
+    try{ const r = await window.pywebview.api.get_instructions(); _instrOrig = (r && r.text) || ''; }catch(e){ _instrOrig = ''; }
+  } else { _instrOrig = document.getElementById('instrText').value || ''; }
+  document.getElementById('instrText').value = _instrOrig;
+  instrDirtyCheck();
+}
+// Save is enabled only when the text differs from what was loaded.
+function instrDirtyCheck(){
+  const btn = document.getElementById('instrSave'); if(!btn) return;
+  btn.disabled = (document.getElementById('instrText').value === _instrOrig);
 }
 function closeInstructions(){ document.getElementById('instrModal').classList.remove('open'); }
 function cancelInstructions(){ closeInstructions(); openSettings(); }  // discard edits, return to Settings
@@ -167,7 +175,8 @@ async function saveInstructions(){
   if(!backendReady) return;
   const t = document.getElementById('instrText').value;
   try{ await window.pywebview.api.set_instructions(t); }catch(e){}
-  closeInstructions(); newChat(); flashBanner('Custom instructions saved');
+  _instrOrig = t;
+  closeInstructions(); newChat(); flashBanner('Custom instructions saved'); openSettings();
 }
 async function saveMcp(){
   if(!backendReady) return;

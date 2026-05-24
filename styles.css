@@ -376,6 +376,8 @@
     border-radius:7px;font-size:12.5px;cursor:pointer;font-family:var(--font)}
   .seg:hover{border-color:#484f58;color:var(--text)}
   .seg.on{background:var(--accent);border-color:var(--accent);color:#fff}
+  .seg:disabled{opacity:.4;cursor:default}
+  .seg:disabled:hover{border-color:var(--border);color:var(--text-dim)}
   .perm-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
   .modal-wide{width:560px;max-width:calc(100% - 40px)}
   .modal-wide .modal-body{max-height:78vh;overflow:auto}
