@@ -14,7 +14,16 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import threading
+import time
+
+
+def _dbg(*parts):
+    """Print startup/diagnostic trace to the console when COPILOT_DEBUG is set.
+    Run the app with $env:COPILOT_DEBUG="1" to see exactly where it stalls."""
+    if os.environ.get("COPILOT_DEBUG"):
+        print(f"[dbg {time.strftime('%H:%M:%S')}]", *parts, file=sys.stderr, flush=True)
 
 # If pywebview falls back to its Qt backend (e.g. on Linux without GTK),
 # make sure qtpy targets PyQt6. Harmless on Windows/GTK. Set before importing.
@@ -172,7 +181,9 @@ class Api:
         if not self.window:
             return
         payload = ",".join(json.dumps(a) for a in args)
+        _dbg("_js ->", fn)
         self.window.evaluate_js(f"window.{fn} && window.{fn}({payload})")
+        _dbg("_js done", fn)   # if '-> fn' prints but 'done fn' doesn't, evaluate_js is blocking
 
     def _make_terminal(self) -> str:
         """Create a new terminal in the active project folder; return its id."""
@@ -207,18 +218,24 @@ class Api:
             on_permission=lambda p: self._js("onPermissionRequest", p),
         )
         try:
-            status = self._run(self.backend.start())
+            _dbg("start(): calling backend.start() ...")
+            status = self._run(self.backend.start(), timeout=200)
+            _dbg("start(): backend.start() returned; authenticated =", self.backend.authenticated)
             if not self.backend.authenticated:
                 return {"ok": False, "needsAuth": True, "error": "Not signed in to GitHub Copilot",
                         "host": os.environ.get("COPILOT_HOST", "")}
             models = []
             try:   # bounded + non-fatal: a slow proxy shouldn't stall startup
+                _dbg("start(): list_models() ...")
                 models = [getattr(m, "id", str(m)) for m in self._run(self.backend.list_models(), timeout=20)]
-            except Exception:
-                pass
+                _dbg("start(): list_models() returned", len(models), "models")
+            except Exception as e:
+                _dbg("start(): list_models() failed/timed out:", repr(e))
+            _dbg("start(): returning ok")
             return {"ok": True, "status": str(status), "models": models,
                     "workdir": self.backend.working_dir, "login": self.backend.login}
         except Exception as e:
+            _dbg("start(): EXCEPTION:", repr(e))
             return {"ok": False, "error": str(e)}
 
     def send(self, prompt: str, attachments=None):

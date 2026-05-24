@@ -16,9 +16,16 @@ from __future__ import annotations
 
 import asyncio
 import os
+import sys
+import time
 import uuid
 
 from copilot import CopilotClient, SubprocessConfig
+
+
+def _dbg(*parts):
+    if os.environ.get("COPILOT_DEBUG"):
+        print(f"[dbg {time.strftime('%H:%M:%S')}]", *parts, file=sys.stderr, flush=True)
 from copilot.generated.session_events import SessionEventType
 from copilot.generated.rpc import ModeSetRequest, SessionMode, SessionsForkRequest
 from copilot.session import PermissionRequestResult
@@ -143,23 +150,28 @@ class CopilotBackend:
         # Each step is bounded so a proxy/network stall surfaces a specific error
         # in the UI instead of hanging forever. The labels match the diagnose.py steps.
         self.client = CopilotClient(self._subprocess_cfg(), auto_start=False)
+        _dbg("backend.start(): client.start() ...")
         try:
             await asyncio.wait_for(self.client.start(), timeout=45)
         except asyncio.TimeoutError:
             raise RuntimeError("Timed out launching the bundled Copilot CLI (check proxy settings).")
+        _dbg("backend.start(): get_auth_status() ...")
         try:
             status = await asyncio.wait_for(self.client.get_auth_status(), timeout=45)
         except asyncio.TimeoutError:
             raise RuntimeError("Timed out checking sign-in status (proxy or auth handshake stalled).")
         self.authenticated = bool(getattr(status, "isAuthenticated", False))
         self.login = getattr(status, "login", None)
+        _dbg("backend.start(): authenticated =", self.authenticated, "login =", self.login)
         # Only create a session once authenticated -- an unauthenticated session is
         # created but fails on send ("Session was not created with auth info").
         if self.authenticated:
+            _dbg("backend.start(): create_session() ...")
             try:
                 self.session = await asyncio.wait_for(self._make_session(), timeout=60)
             except asyncio.TimeoutError:
                 raise RuntimeError("Signed in, but timed out creating a session (proxy reach to GitHub).")
+            _dbg("backend.start(): session created")
         else:
             self.session = None
         return status
@@ -280,6 +292,7 @@ class CopilotBackend:
         """Called by the SDK for every session event. Sync callback."""
         try:
             t = event.type
+            _dbg("event:", getattr(t, "value", t))
             if t == SessionEventType.USER_MESSAGE:
                 eid = getattr(event, "id", None)
                 if eid is not None:
