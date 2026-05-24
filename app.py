@@ -212,8 +212,8 @@ class Api:
                 return {"ok": False, "needsAuth": True, "error": "Not signed in to GitHub Copilot",
                         "host": os.environ.get("COPILOT_HOST", "")}
             models = []
-            try:
-                models = [getattr(m, "id", str(m)) for m in self._run(self.backend.list_models())]
+            try:   # bounded + non-fatal: a slow proxy shouldn't stall startup
+                models = [getattr(m, "id", str(m)) for m in self._run(self.backend.list_models(), timeout=20)]
             except Exception:
                 pass
             return {"ok": True, "status": str(status), "models": models,

@@ -99,8 +99,39 @@ async def main() -> int:
                 print(f"   models: {ids[:8]}", flush=True)
             except Exception:
                 pass
-            print("\n=== Auth + network look OK. If the app still hangs, the stall is in"
-                  " session creation; tell me this output. ===", flush=True)
+            # Session creation is what the app does next, and where config discovery
+            # may try to start ~/.copilot MCP servers (the usual hang point).
+            from copilot.session import PermissionRequestResult
+            discover = os.environ.get("COPILOT_NO_DISCOVERY", "").lower() not in ("1", "true", "yes")
+            print(f"\n   (enable_config_discovery = {discover}; "
+                  f"set COPILOT_NO_DISCOVERY=1 to skip ~/.copilot MCP discovery)", flush=True)
+
+            async def _mk_session():
+                return await client.create_session(
+                    on_permission_request=lambda req, inv=None: PermissionRequestResult(kind="approve-once"),
+                    on_event=lambda e: None,
+                    streaming=True,
+                    working_directory=os.getcwd(),
+                    enable_config_discovery=discover,
+                )
+            try:
+                sess = await _step("create_session()  (loads instructions + MCP from .github / ~/.copilot)",
+                                   _mk_session(), 60)
+                print("   session created OK — the app should connect.", flush=True)
+                try:
+                    await sess.close()
+                except Exception:
+                    pass
+                print("\n=== Everything OK. ===", flush=True)
+            except asyncio.TimeoutError:
+                print("\n=== Session creation TIMED OUT — a discovered MCP server (e.g. your"
+                      " ~/.copilot Neo4j memory server) is likely not reachable. Start it"
+                      " (run-neo4j-memory-mcp.ps1) OR set COPILOT_NO_DISCOVERY=1 and retry. ===", flush=True)
+                return 1
+            except Exception as e:
+                print(f"\n=== Session creation errored ({type(e).__name__}: {e}). Share this —"
+                      " it may or may not be MCP-related. ===", flush=True)
+                return 1
         else:
             print("\n=== Connected to the CLI but NOT signed in. Sign in via the Copilot"
                   " CLI, then re-run. ===", flush=True)

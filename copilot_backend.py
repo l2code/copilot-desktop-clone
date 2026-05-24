@@ -220,13 +220,18 @@ class CopilotBackend:
         return {"ok": True}
 
     async def _make_session(self):
+        # Config discovery loads instructions + MCP servers from .github and the
+        # user's ~/.copilot. It's great, but if a discovered MCP server can't be
+        # reached (e.g. a local Neo4j memory server that isn't running) it can stall
+        # session creation. Set COPILOT_NO_DISCOVERY=1 to skip it.
+        discover = os.environ.get("COPILOT_NO_DISCOVERY", "").lower() not in ("1", "true", "yes")
         kwargs = dict(
             on_permission_request=self._handle_permission,
             model=self.model,
             streaming=True,
             on_event=self._handle_event,
             working_directory=self.working_dir,
-            enable_config_discovery=True,   # honor repo AGENTS.md / .github instructions
+            enable_config_discovery=discover,   # honor repo .github + ~/.copilot config
         )
         if self.instructions:
             kwargs["system_message"] = {"mode": "append", "content": self.instructions}
