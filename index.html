@@ -114,12 +114,8 @@
       <!-- Integrated terminal (PowerShell on Windows), runs in the active project folder. Docked below the composer. -->
       <div class="terminal-panel" id="termPanel">
         <div class="term-tabs" id="termTabs">
-          <!-- tab chips are injected here; the + and right-side controls follow -->
+          <!-- tab chips are injected here, followed by the + new-tab button -->
           <button type="button" class="term-newtab" id="termNewTab" onclick="termNewTab()" title="New terminal" aria-label="New terminal">+</button>
-          <span class="term-tabs-spacer"></span>
-          <button type="button" class="term-tabbtn" id="termStop" onclick="termInterrupt()" title="Stop the running command" disabled><svg viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="1.5"/></svg></button>
-          <button type="button" class="term-tabbtn" onclick="termClear()" title="Clear terminal"><svg viewBox="0 0 16 16"><path d="M6.5 1.5h3a1 1 0 011 1V3H13v1.5h-.62l-.5 8.06A1.5 1.5 0 0110.38 14H5.62a1.5 1.5 0 01-1.5-1.44l-.5-8.06H3V3h2.5v-.5a1 1 0 011-1zm-.95 3l.45 8h4l.45-8h-4.9z"/></svg></button>
-          <button type="button" class="term-tabbtn" aria-label="Hide terminal" title="Hide terminal" onclick="toggleTerminal()"><svg viewBox="0 0 16 16"><path d="M2.5 12.5h11V14h-11z"/></svg></button>
         </div>
         <div class="term-bodies" id="termBodies"></div>
       </div>
