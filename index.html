@@ -64,25 +64,6 @@
 
       <button id="scrollBtn" class="scroll-btn" onclick="scrollDown(true)" title="Jump to latest"><svg viewBox="0 0 16 16"><path d="M8 11.5 3.5 7l1-1L8 9.5 11.5 6l1 1z"/></svg></button>
 
-      <!-- Integrated terminal (PowerShell on Windows), runs in the active project folder -->
-      <div class="terminal-panel" id="termPanel">
-        <div class="term-head">
-          <span class="term-title"><svg viewBox="0 0 16 16"><path d="M3.7 5.5l-.9.9L4.4 8 2.8 9.6l.9.9L6.2 8 3.7 5.5zM7.5 9.5V11h4V9.5h-4z"/></svg><span id="termShell">Terminal</span></span>
-          <span class="term-cwd" id="termCwdLabel" title=""></span>
-          <span class="term-actions">
-            <button type="button" class="seg" id="termStop" onclick="termInterrupt()" title="Stop the running command" disabled>Stop</button>
-            <button type="button" class="seg" onclick="termClear()" title="Clear output">Clear</button>
-            <button type="button" class="icon-btn" aria-label="Close terminal" onclick="toggleTerminal()"><svg viewBox="0 0 16 16"><path d="M3.7 3.7a1 1 0 011.4 0L8 6.6l2.9-2.9a1 1 0 111.4 1.4L9.4 8l2.9 2.9a1 1 0 11-1.4 1.4L8 9.4l-2.9 2.9a1 1 0 01-1.4-1.4L6.6 8 3.7 5.1a1 1 0 010-1.4z"/></svg></button>
-          </span>
-        </div>
-        <div class="term-out" id="termOut" onclick="document.getElementById('termInput').focus()"></div>
-        <div class="term-inputrow">
-          <span class="term-prompt" id="termPrompt">&gt;</span>
-          <input id="termInput" class="term-input" spellcheck="false" autocomplete="off"
-                 placeholder="Type a command and press Enter" onkeydown="onTermKey(event)">
-        </div>
-      </div>
-
       <div class="composer-wrap">
         <div class="composer-inner">
           <div class="composer">
@@ -127,6 +108,25 @@
               <span class="ctx-bar"><span class="ctx-fill" id="ctxFill"></span></span>
             </button>
           </div>
+        </div>
+      </div>
+
+      <!-- Integrated terminal (PowerShell on Windows), runs in the active project folder. Docked below the composer. -->
+      <div class="terminal-panel" id="termPanel">
+        <div class="term-head">
+          <span class="term-title"><svg viewBox="0 0 16 16"><path d="M3.7 5.5l-.9.9L4.4 8 2.8 9.6l.9.9L6.2 8 3.7 5.5zM7.5 9.5V11h4V9.5h-4z"/></svg><span id="termShell">Terminal</span></span>
+          <span class="term-cwd" id="termCwdLabel" title=""></span>
+          <span class="term-actions">
+            <button type="button" class="seg" id="termStop" onclick="termInterrupt()" title="Stop the running command" disabled>Stop</button>
+            <button type="button" class="seg" onclick="termClear()" title="Clear output">Clear</button>
+            <button type="button" class="icon-btn" aria-label="Close terminal" onclick="toggleTerminal()"><svg viewBox="0 0 16 16"><path d="M3.7 3.7a1 1 0 011.4 0L8 6.6l2.9-2.9a1 1 0 111.4 1.4L9.4 8l2.9 2.9a1 1 0 11-1.4 1.4L8 9.4l-2.9 2.9a1 1 0 01-1.4-1.4L6.6 8 3.7 5.1a1 1 0 010-1.4z"/></svg></button>
+          </span>
+        </div>
+        <div class="term-out" id="termOut" onclick="document.getElementById('termInput').focus()"></div>
+        <div class="term-inputrow">
+          <span class="term-prompt" id="termPrompt">&gt;</span>
+          <input id="termInput" class="term-input" spellcheck="false" autocomplete="off"
+                 placeholder="Type a command and press Enter" onkeydown="onTermKey(event)">
         </div>
       </div>
     </main>
