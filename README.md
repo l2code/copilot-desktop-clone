@@ -1,4 +1,4 @@
-# Copilot Desktop (clone)
+# Copilot Desktop
 
 A small desktop chat app that talks to **GitHub Copilot** through GitHub's
 official **Copilot SDK** (`github-copilot-sdk`). The UI is plain HTML/CSS/JS
@@ -75,9 +75,9 @@ banner shows the error (usually "sign in first").
 ```
 
 ## Notes / next steps
-- The permission handler in `copilot_backend.py` auto-approves agent actions.
-  If you enable tools that edit files or run shell commands, tighten it to
-  prompt the user.
+- Tool permissions default to asking before file edits, shell commands, URL
+  access, and MCP tool use. Reads are allowed, and Plan mode rejects actions
+  that change state.
 - To ship as a single `.exe`, run PyInstaller against `app.py` — still no admin,
   still no compiler toolchain needed.
 - Model list is pulled live from `client.list_models()`; the picker in the top

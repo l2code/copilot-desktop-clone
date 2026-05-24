@@ -24,11 +24,11 @@ let pendingAttachments = [];  // [{type:'file', path, displayName}]
 function clipSvg(){ return '<svg viewBox="0 0 16 16"><path d="M9.6 2.4a3 3 0 014.2 4.2l-6 6a1.9 1.9 0 01-2.7-2.7l5.3-5.3a.75.75 0 011 1l-5.3 5.3a.4.4 0 00.6.6l6-6a1.5 1.5 0 00-2.1-2.1l-6 6a2.6 2.6 0 003.7 3.7l5.3-5.3a.75.75 0 011 1l-5.3 5.3a4.1 4.1 0 01-5.8-5.8l6-6z"/></svg>'; }
 function renderAttachments(){
   document.getElementById('attachments').innerHTML = pendingAttachments.map((a,i)=>
-    `<span class="chip"><span class="chip-open" onclick="previewAttachment(${i})" title="Preview file">${clipSvg()}${escapeHtml(a.displayName)}</span><span class="x" onclick="removeAttachment(${i})">&times;</span></span>`).join('');
+    `<span class="chip"><button type="button" class="chip-open" onclick="previewAttachment(${i})" title="Preview file">${clipSvg()}${escapeHtml(a.displayName)}</button><button type="button" class="x" aria-label="Remove attachment" onclick="removeAttachment(${i})">&times;</button></span>`).join('');
 }
 function removeAttachment(i){ pendingAttachments.splice(i,1); renderAttachments(); toggleSend(); }
 async function attachFile(){
-  if(!backendReady) return;            // file picker comes from the desktop shell
+  if(!backendReady){ flashBanner('File attachments are available after Copilot connects', 'warn'); return; }
   let f; try{ f = await window.pywebview.api.pick_file(); }catch(e){ return; }
   if(!f || !f.path) return;
   if(/\.(png|jpe?g|gif|webp|bmp)$/i.test(f.name || '')){

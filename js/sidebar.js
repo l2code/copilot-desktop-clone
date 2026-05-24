@@ -8,7 +8,7 @@ let currentCwd = null;      // working folder of the active chat (matches the co
 function newConvId(){ return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
 async function loadConversations(){
-  if(!window.pywebview || !window.pywebview.api) return;
+  if(!window.pywebview || !window.pywebview.api){ renderSidebar(); return; }
   try{ conversations = (await window.pywebview.api.list_conversations()) || []; }
   catch(e){ conversations = []; }
   renderSidebar();
@@ -82,7 +82,7 @@ function renderThread(){
   scrollDown();
 }
 async function undoLast(){
-  if(!backendReady) return;
+  if(!backendReady){ flashBanner('Rewind is available after Copilot connects', 'warn'); return; }
   let res; try{ res = await window.pywebview.api.undo(); }catch(e){ return; }
   if(res && res.ok){
     for(let i=currentMessages.length-1;i>=0;i--){ if(currentMessages[i].role==='assistant'){ currentMessages.splice(i,1); break; } }
@@ -132,6 +132,11 @@ async function openConversation(id){
 
 // ===== Top-bar buttons =====
 function toggleSidebar(){ document.querySelector('.sidebar').classList.toggle('collapsed'); }
+function initResponsiveSidebar(){
+  const sb = document.querySelector('.sidebar');
+  if(sb && window.innerWidth <= 640) sb.classList.add('collapsed');
+}
+initResponsiveSidebar();
 function onContextUsage(cur, lim){
   if(!lim){ return; }
   const item = document.getElementById('ctxItem'); if(!item) return;
@@ -155,6 +160,11 @@ function setWdDisplay(path){
   const w = document.getElementById('wdName'); if(!w) return;
   const base = String(path).replace(/[\\/]+$/,'').split(/[\\/]/).pop() || path;
   w.textContent = base;
+  const tp = document.getElementById('topbarProject');
+  if(tp){
+    tp.textContent = base ? base : 'Choose a project folder';
+    tp.title = path || '';
+  }
   const b = document.getElementById('wdBtn'); if(b) b.title = 'Working folder: ' + path;
   renderSidebar();
 }
@@ -181,7 +191,7 @@ async function selectMode(id){
   }
 }
 async function pickFolder(){
-  if(!backendReady) return;
+  if(!backendReady){ flashBanner('Choose a folder after Copilot connects', 'warn'); return; }
   let f; try{ f = await window.pywebview.api.pick_folder(); }catch(e){ return; }
   if(!f || !f.path) return;
   let res; try{ res = await window.pywebview.api.set_working_dir(f.path); }catch(e){ return; }
@@ -192,4 +202,3 @@ async function pickFolder(){
     setTimeout(()=>{ const bn=document.getElementById('bannerHost'); if(bn) bn.innerHTML=''; }, 4000);
   }
 }
-

@@ -152,16 +152,19 @@ async function openMcp(){
   closeSettings();
   document.getElementById('mcpModal').classList.add('open');
   document.getElementById('mcpErr').textContent = '';
+  document.getElementById('mcpForm').style.display = 'none';
+  document.getElementById('mcpJsonWrap').style.display = 'none';
   if(backendReady){
     try{ const m = await window.pywebview.api.get_mcp(); mcpServers = (m && m.servers) || {}; }catch(e){ mcpServers = {}; }
     try{ const st = await window.pywebview.api.get_mcp_status(); mcpStatus = (st && st.status) || {}; mcpDisabled = (st && st.disabled) || []; }catch(e){}
-    document.getElementById('mcpForm').style.display = 'none';
-    document.getElementById('mcpJsonWrap').style.display = 'none';
-    renderMcpList();
   }
+  renderMcpList();
 }
 function closeMcp(){ document.getElementById('mcpModal').classList.remove('open'); }
-function flashBanner(msg){ showBanner('ok', msg); setTimeout(()=>{ const b=document.getElementById('bannerHost'); if(b) b.innerHTML=''; }, 3000); }
+function flashBanner(msg, kind){
+  showBanner(kind || 'ok', msg);
+  setTimeout(()=>{ const b=document.getElementById('bannerHost'); if(b) b.innerHTML=''; }, 3000);
+}
 let _confirmCb = null;
 function askConfirm(msg, onYes, okLabel){
   document.getElementById('confirmMsg').textContent = msg;
@@ -172,14 +175,13 @@ function askConfirm(msg, onYes, okLabel){
 function confirmCancel(){ document.getElementById('confirmModal').classList.remove('open'); _confirmCb = null; }
 function confirmAccept(){ const cb = _confirmCb; confirmCancel(); if(cb) cb(); }
 async function saveInstructions(){
-  if(!backendReady) return;
+  if(!backendReady){ flashBanner('Custom instructions are available after Copilot connects', 'warn'); return; }
   const t = document.getElementById('instrText').value;
   try{ await window.pywebview.api.set_instructions(t); }catch(e){}
   _instrOrig = t;
   closeInstructions(); newChat(); flashBanner('Custom instructions saved'); openSettings();
 }
 async function saveMcp(){
-  if(!backendReady) return;
   const raw = document.getElementById('mcpText').value.trim();
   let obj = {};
   if(raw){
@@ -191,7 +193,7 @@ async function saveMcp(){
   }
   document.getElementById('mcpErr').textContent = '';
   mcpServers = obj;
-  try{ await window.pywebview.api.set_mcp(obj); }catch(e){}
+  if(backendReady){ try{ await window.pywebview.api.set_mcp(obj); }catch(e){} }
   document.getElementById('mcpJsonWrap').style.display = 'none';
   renderMcpList(); flashBanner('MCP servers saved');
 }
@@ -221,9 +223,9 @@ function renderMcpList(){
       <span class="mcp-meta" title="${escapeAttr(meta)}">${escapeHtml(meta)}</span>
       <span class="mcp-spacer"></span>
       <span class="mcp-actions">
-        <button class="seg" onclick="mcpToggle('${escapeAttr(n)}', ${disabled})">${disabled?'Enable':'Disable'}</button>
-        <button class="seg" onclick="mcpEdit('${escapeAttr(n)}')">Edit</button>
-        <button class="seg" onclick="mcpRemove('${escapeAttr(n)}')">Remove</button>
+        <button class="seg" onclick="mcpToggle('${escapeJsArg(n)}', ${disabled})">${disabled?'Enable':'Disable'}</button>
+        <button class="seg" onclick="mcpEdit('${escapeJsArg(n)}')">Edit</button>
+        <button class="seg" onclick="mcpRemove('${escapeJsArg(n)}')">Remove</button>
       </span></div>`;
   }).join('');
 }
@@ -231,6 +233,7 @@ function mcpAddNew(){ mcpRenderForm(''); }
 function mcpEdit(name){ mcpRenderForm(name); }
 function mcpCancelForm(){ document.getElementById('mcpForm').style.display='none'; }
 function mcpRenderForm(name){
+  document.getElementById('mcpErr').textContent = '';
   const cfg = name ? (mcpServers[name]||{}) : {};
   const isHttp = !!cfg.url;
   const f = document.getElementById('mcpForm');
@@ -266,14 +269,18 @@ function mcpSetTransport(t){
 }
 async function mcpSaveForm(){
   const name = document.getElementById('mcpfName').value.trim();
-  if(!name) return;
+  if(!name){ document.getElementById('mcpErr').textContent = 'Server name is required.'; return; }
   const httpVisible = document.getElementById('mcpHttp').style.display !== 'none';
   let cfg;
   if(httpVisible){
-    cfg = {type:'http', url: document.getElementById('mcpfUrl').value.trim(), tools:['*']};
+    const url = document.getElementById('mcpfUrl').value.trim();
+    if(!url){ document.getElementById('mcpErr').textContent = 'URL is required for HTTP servers.'; return; }
+    cfg = {type:'http', url, tools:['*']};
     const h = parseKV(document.getElementById('mcpfHeaders').value, ':'); if(Object.keys(h).length) cfg.headers = h;
   } else {
-    cfg = {type:'local', command: document.getElementById('mcpfCmd').value.trim(),
+    const command = document.getElementById('mcpfCmd').value.trim();
+    if(!command){ document.getElementById('mcpErr').textContent = 'Command is required for local servers.'; return; }
+    cfg = {type:'local', command,
            args: document.getElementById('mcpfArgs').value.trim().split(/\s+/).filter(Boolean), tools:['*']};
     const e = parseKV(document.getElementById('mcpfEnv').value, '='); if(Object.keys(e).length) cfg.env = e;
   }
@@ -299,8 +306,9 @@ function toggleMcpJson(){
   if(show){ document.getElementById('mcpText').value = Object.keys(mcpServers).length ? JSON.stringify(mcpServers, null, 2) : ''; }
 }
 function renderSettings(){
+  const name = (document.getElementById('userName') || {}).textContent || '';
   document.getElementById('settingsAccount').textContent =
-    backendReady ? 'Connected to GitHub Copilot' : 'Demo mode (no backend)';
+    backendReady ? ('Connected' + (name && name !== 'GitHub account' ? ' as ' + name : ' to GitHub Copilot')) : 'Demo mode (no backend)';
 }
 function clearHistory(){
   askConfirm('Delete all conversations? This can\u2019t be undone.', doClearHistory, 'Delete all');
@@ -318,4 +326,3 @@ function setAutoApprove(v){
   if(backendReady){ try{ window.pywebview.api.set_auto_approve(v); }catch(e){} }
   renderSettings();
 }
-

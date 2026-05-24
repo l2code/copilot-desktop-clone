@@ -10,7 +10,7 @@ function newChat(){
   renderSidebar();
 }
 
-function escapeHtml(s){return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function escapeHtml(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 
 function addUserMessage(text, _replay, attNames){
   const inner = document.getElementById('threadInner');
@@ -179,7 +179,7 @@ function onCopilotActivity(d){
     const det = (who ? ' '+who : '') + (d.detail ? ` <code>${escapeHtml(d.detail)}</code>` : '');
     const base = d.detail ? String(d.detail).split(/[\\/]/).pop() : '';
     const hasDiff = d.detail && (lastDiffs[d.detail] || lastDiffs[base]);
-    const click = hasDiff ? ` onclick="openDiffPanel('${escapeAttr(d.detail)}')" style="cursor:pointer"` : '';
+    const click = hasDiff ? ` onclick="openDiffPanel('${escapeJsArg(d.detail)}')" style="cursor:pointer"` : '';
     const badge = hasDiff ? ' <span class="act-diff-badge">view diff</span>' : '';
     act.insertAdjacentHTML('beforeend',
       `<div class="act-line" data-aid="${escapeAttr(d.id||'')}"${click}>${actSvg('tool')}<span><b>${escapeHtml(d.name||'tool')}</b>${det}${badge}</span><span class="act-status">…</span></div>`);
@@ -291,7 +291,10 @@ function renderTextBlock(text){
   flushPara(); flushList();
   return html;
 }
-function escapeAttr(s){ return s.replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escapeAttr(s){ return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+function escapeJsArg(s){
+  return String(s).replace(/\\/g,'\\\\').replace(/'/g,"\\'").replace(/\r/g,'\\r').replace(/\n/g,'\\n').replace(/</g,'\\x3c');
+}
 
 function streamText(target, reply){
   const words = reply.intro.split(' ');

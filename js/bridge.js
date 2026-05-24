@@ -1,5 +1,5 @@
 
-let MODELS = ["GPT-4.1","Claude Sonnet 4.6","o4-mini","Gemini 2.5 Pro"];
+let MODELS = ["auto"];
 let modelIdx = 0;
 let started = false;
 
@@ -27,11 +27,16 @@ async function initBackend(){
         document.getElementById('modelName').textContent = MODELS[0];
       }
       if(res.workdir) setWdDisplay(res.workdir);
+      setAccount(res.login);
       await loadConversations();
       await loadCommands();
       newChat();
     } else if(res && res.needsAuth){
       setStatus('warn');
+      if(res.host){
+        const host = document.getElementById('authHost');
+        if(host) host.value = res.host;
+      }
       showAuth(true);
     } else {
       setStatus('err');
@@ -48,6 +53,18 @@ function setStatus(kind){
   const d = document.getElementById('statusDot');
   if(d) d.className = 'status-dot ' + (kind || '');
 }
+function setAccount(login){
+  const name = login || 'GitHub account';
+  const user = document.getElementById('userName');
+  const avatar = document.getElementById('userAvatar');
+  if(user) user.textContent = name;
+  if(avatar){
+    if(!login){ avatar.textContent = 'GH'; return; }
+    const parts = String(name).replace(/[^a-zA-Z0-9 _.-]/g,'').split(/[\s._-]+/).filter(Boolean);
+    const initials = parts.length > 1 ? (parts[0][0] + parts[1][0]) : String(name).slice(0,2);
+    avatar.textContent = (initials || 'GH').toUpperCase();
+  }
+}
 // error/info banner (only used for failures now, not the connected state)
 function showBanner(kind, text){
   document.getElementById('bannerHost').innerHTML =
@@ -61,9 +78,19 @@ function showAuth(needed, msg){
 }
 async function startSignIn(){
   const btn = document.getElementById('authBtn');
+  const host = (document.getElementById('authHost') || {}).value || '';
   btn.disabled = true; btn.textContent = 'Opening sign-in\u2026';
   document.getElementById('authMsg').textContent = 'A GitHub sign-in window is opening \u2014 choose GitHub.com, Enterprise (GHE.com), or your provider there. (If a code appears below, enter it at the shown link.)';
-  try{ await window.pywebview.api.sign_in(); }catch(e){ btn.disabled=false; btn.textContent='Sign in'; }
+  try{
+    const res = await window.pywebview.api.sign_in(host.trim());
+    if(res && res.ok === false){
+      btn.disabled = false; btn.textContent = 'Try again';
+      document.getElementById('authMsg').textContent = 'Sign-in could not start: ' + (res.error || 'unknown error') + '.';
+    }
+  }catch(e){
+    btn.disabled=false; btn.textContent='Sign in';
+    document.getElementById('authMsg').textContent = 'Sign-in could not start: ' + e + '.';
+  }
 }
 function onAuthCode(url, code){
   const c = document.getElementById('authCode'); c.style.display = 'block';
@@ -77,6 +104,7 @@ async function onAuthDone(res){
     backendReady = true; setStatus('ok');
     if(res.models && res.models.length){ MODELS = res.models; modelIdx = 0; document.getElementById('modelName').textContent = MODELS[0]; }
     if(res.workdir) setWdDisplay(res.workdir);
+    setAccount(res.login);
     try{ await loadConversations(); await loadCommands(); }catch(e){}
     newChat();
     flashBanner('Signed in' + (res.login ? ' as ' + res.login : ''));
@@ -196,4 +224,3 @@ document.addEventListener('keydown', (e)=>{
     if(b) b.classList.toggle('show', !atBottom);
   });
 })();
-

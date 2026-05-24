@@ -1,7 +1,7 @@
 """
 app.py
 ======
-Desktop shell for the Copilot clone. Uses pywebview to render index.html in a
+Desktop shell for Copilot Desktop. Uses pywebview to render index.html in a
 native window (WebView2 on Windows 11 -- already present, no admin/install) and
 bridges the JavaScript UI to the async Copilot SDK backend.
 

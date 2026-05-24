@@ -23,16 +23,6 @@ from copilot.generated.rpc import ModeSetRequest, SessionMode, SessionsForkReque
 from copilot.session import PermissionRequestResult
 
 
-async def _approve_all(_request) -> PermissionRequestResult:
-    """Auto-approve agent permission requests (tool/file/shell access).
-
-    For a simple chat clone this is fine. If you later let Copilot run shell
-    commands or edit files, tighten this to inspect `_request.kind` and prompt
-    the user before returning 'approve-once' vs 'reject'.
-    """
-    return PermissionRequestResult(kind="approve-once")
-
-
 class CopilotBackend:
     def __init__(self, github_token: str | None = None, model: str | None = None,
                  working_dir: str | None = None):
