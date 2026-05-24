@@ -116,7 +116,9 @@ async function openConversation(id){
   // Switch the working folder to this chat's project so the composer and the
   // sidebar's active project stay consistent with the conversation you opened.
   if(conv.cwd && conv.cwd !== currentCwd && backendReady){
-    try{ const r = await window.pywebview.api.set_working_dir(conv.cwd); if(r && r.ok) setWdDisplay(conv.cwd); }catch(e){}
+    // remember=false: viewing a past chat switches the live folder but must NOT
+    // overwrite the default folder that gets restored on next launch.
+    try{ const r = await window.pywebview.api.set_working_dir(conv.cwd, false); if(r && r.ok) setWdDisplay(conv.cwd); }catch(e){}
   }
   started = true;
   const inner = document.getElementById('threadInner');

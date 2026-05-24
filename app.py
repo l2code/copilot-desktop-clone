@@ -232,15 +232,19 @@ class Api:
         path = res[0] if isinstance(res, (list, tuple)) else res
         return {"path": path}
 
-    def set_working_dir(self, path):
+    def set_working_dir(self, path, remember=True):
+        # `remember` persists this as the default folder for next launch. We only
+        # remember folders the user *explicitly picks* -- browsing an old chat
+        # switches the live folder (remember=False) but must not change the default.
         if not self.backend:
             return {"ok": False, "error": "Backend not started"}
         try:
             self._run(self.backend.set_working_dir(path))
-            try:                                   # remember it for next launch
-                prefs = _load_prefs(); prefs["workdir"] = path; _save_prefs(prefs)
-            except Exception:
-                pass
+            if remember:
+                try:
+                    prefs = _load_prefs(); prefs["workdir"] = path; _save_prefs(prefs)
+                except Exception:
+                    pass
             return {"ok": True, "workdir": path}
         except Exception as e:
             return {"ok": False, "error": str(e)}
