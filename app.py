@@ -37,6 +37,26 @@ INDEX = os.path.join(HERE, "index.html")
 # dir / git, under the user's home).
 HISTORY_DIR = os.path.join(os.path.expanduser("~"), ".copilot-desktop")
 HISTORY_FILE = os.path.join(HISTORY_DIR, "history.json")
+PREFS_FILE = os.path.join(HISTORY_DIR, "prefs.json")  # small app prefs, e.g. last working folder
+
+
+def _load_prefs() -> dict:
+    try:
+        with open(PREFS_FILE, encoding="utf-8") as f:
+            d = json.load(f)
+            if isinstance(d, dict):
+                return d
+    except Exception:
+        pass
+    return {}
+
+
+def _save_prefs(d: dict) -> None:
+    os.makedirs(HISTORY_DIR, exist_ok=True)
+    tmp = PREFS_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(d, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, PREFS_FILE)  # atomic write
 
 
 def _load_history() -> dict:
@@ -87,7 +107,13 @@ class Api:
 
     def start(self, github_token: str | None = None):
         token = github_token or os.environ.get("GITHUB_TOKEN") or None
-        workdir = os.environ.get("COPILOT_WORKDIR") or os.path.expanduser("~")
+        # Restore the last working folder the user chose (persisted in prefs), so the
+        # app reopens in the same project instead of defaulting to the home folder.
+        workdir = (os.environ.get("COPILOT_WORKDIR")
+                   or _load_prefs().get("workdir")
+                   or os.path.expanduser("~"))
+        if not (workdir and os.path.isdir(workdir)):   # saved folder gone? fall back to home
+            workdir = os.path.expanduser("~")
         self.backend = CopilotBackend(github_token=token, working_dir=workdir)
         self.backend.set_handlers(
             on_delta=lambda c: self._js("onCopilotDelta", c),
@@ -211,6 +237,10 @@ class Api:
             return {"ok": False, "error": "Backend not started"}
         try:
             self._run(self.backend.set_working_dir(path))
+            try:                                   # remember it for next launch
+                prefs = _load_prefs(); prefs["workdir"] = path; _save_prefs(prefs)
+            except Exception:
+                pass
             return {"ok": True, "workdir": path}
         except Exception as e:
             return {"ok": False, "error": str(e)}
