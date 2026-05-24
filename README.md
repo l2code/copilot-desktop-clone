@@ -114,8 +114,10 @@ Copilot SDK subprocess) uses standard proxy environment variables —
   needs (URL-encoded `HTTP(S)_PROXY` plus `NODE_USE_ENV_PROXY` / `NODE_USE_SYSTEM_CA`,
   mirroring a `run-copilot.ps1` launcher) — the Node-based copilot binary needs
   those flags to use the proxy and trust the corporate CA.
-- Set `COPILOT_EXE` to your installed `copilot.exe` to run that binary (already
-  proxy-configured and signed in) instead of the bundled one.
+- The app uses the SDK's **bundled** copilot binary (protocol-matched). It
+  ignores the ambient `COPILOT_EXE`, because a newer system-installed `copilot.exe`
+  can break the SDK handshake (`invalid literal for int()` on ping). Only set
+  `COPILOT_DESKTOP_CLI` to override with a binary that matches `github-copilot-sdk`.
 
 ## Notes / next steps
 - Tool permissions default to asking before file edits, shell commands, URL

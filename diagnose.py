@@ -68,7 +68,11 @@ async def main() -> int:
             v = "<set>"
         print(f"  {k} = {v}", flush=True)
 
-    cli_path = os.environ.get("COPILOT_EXE")
+    # Mirror the app: use the SDK's bundled binary by default (protocol-matched).
+    # COPILOT_EXE is intentionally ignored; opt in via COPILOT_DESKTOP_CLI only.
+    if os.environ.get("COPILOT_EXE"):
+        print("\nNote: COPILOT_EXE is set but IGNORED (a newer CLI breaks the SDK handshake).", flush=True)
+    cli_path = os.environ.get("COPILOT_DESKTOP_CLI")
     kwargs = dict(
         github_token=os.environ.get("GITHUB_TOKEN") or None,
         use_logged_in_user=(not os.environ.get("GITHUB_TOKEN")),
@@ -77,12 +81,9 @@ async def main() -> int:
     )
     if cli_path and os.path.isfile(cli_path):
         kwargs["cli_path"] = cli_path
-        print(f"\nUsing COPILOT_EXE: {cli_path}", flush=True)
+        print(f"\nUsing COPILOT_DESKTOP_CLI: {cli_path}", flush=True)
     else:
-        if cli_path:
-            print(f"\nCOPILOT_EXE set but not found: {cli_path} — using bundled binary", flush=True)
-        else:
-            print("\nUsing the SDK's bundled copilot binary", flush=True)
+        print("\nUsing the SDK's bundled copilot binary", flush=True)
 
     client = CopilotClient(SubprocessConfig(**kwargs), auto_start=False)
     try:

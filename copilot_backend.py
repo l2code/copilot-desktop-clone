@@ -170,10 +170,12 @@ class CopilotBackend:
             use_logged_in_user=(self.github_token is None),
             cwd=self.working_dir,
         )
-        # If COPILOT_EXE points at an installed copilot binary, use it instead of
-        # the bundled one. That binary is already configured for the corporate
-        # proxy (COPILOT_PROXY_*) and signed in, so it Just Works behind the proxy.
-        cli_path = os.environ.get("COPILOT_EXE")
+        # Use the SDK's *bundled* copilot binary by default — its protocol version
+        # matches this SDK. We deliberately do NOT use the ambient COPILOT_EXE (e.g.
+        # a newer system-installed copilot.exe), because a newer CLI's handshake can
+        # break the installed SDK's parser ("invalid literal for int()" on ping).
+        # To force a specific, protocol-matched binary, set COPILOT_DESKTOP_CLI.
+        cli_path = os.environ.get("COPILOT_DESKTOP_CLI")
         if cli_path and os.path.isfile(cli_path):
             kwargs["cli_path"] = cli_path
         return SubprocessConfig(**kwargs)
