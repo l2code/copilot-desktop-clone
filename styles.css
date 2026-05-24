@@ -383,7 +383,7 @@
     border-radius:8px;color:var(--text);padding:9px 11px;font-family:var(--font);font-size:13px;resize:vertical;outline:none}
   .cz-text:focus{border-color:var(--accent)}
   .cz-mono{font-family:var(--mono);font-size:12.5px;min-height:110px}
-  .cz-actions{display:flex;justify-content:flex-end;margin-top:8px}
+  .cz-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:8px}
   .cz-err{color:#ff7b72;font-size:12px;margin-top:6px;min-height:14px}
   .mcp-health{font-size:11px;color:var(--text-dim);font-weight:400;margin-left:6px}
   .mcp-row{display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px solid var(--border-soft)}

@@ -139,6 +139,7 @@ async function openInstructions(){
   }
 }
 function closeInstructions(){ document.getElementById('instrModal').classList.remove('open'); }
+function cancelInstructions(){ closeInstructions(); openSettings(); }  // discard edits, return to Settings
 async function openMcp(){
   closeSettings();
   document.getElementById('mcpModal').classList.add('open');
