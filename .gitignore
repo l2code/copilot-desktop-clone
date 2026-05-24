@@ -15,6 +15,11 @@ __pycache__/
 # Copilot CLI local auth / config (do not publish credentials)
 .copilot/
 
+# Local env file (may hold proxy credentials / tokens) — never commit
+.env
+*.env
+!example.env
+
 # OS / editor cruft
 .DS_Store
 Thumbs.db

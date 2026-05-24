@@ -41,6 +41,41 @@ HISTORY_FILE = os.path.join(HISTORY_DIR, "history.json")
 PREFS_FILE = os.path.join(HISTORY_DIR, "prefs.json")  # small app prefs, e.g. last working folder
 
 
+def _load_env_file() -> None:
+    """Load a .env into the process environment so the Copilot SDK subprocess
+    inherits things like corporate proxy settings (HTTPS_PROXY / HTTP_PROXY /
+    NO_PROXY) even when the app is launched by double-click rather than from a
+    shell that already exported them.
+
+    Looks at COPILOT_ENV_FILE (explicit path) first, then a .env next to app.py.
+    Existing environment variables are NOT overridden (setdefault semantics), and
+    values may be quoted. Robust to passwords containing special characters since
+    we split only on the first '='."""
+    candidates = []
+    explicit = os.environ.get("COPILOT_ENV_FILE")
+    if explicit:
+        candidates.append(explicit)
+    candidates.append(os.path.join(HERE, ".env"))
+    for path in candidates:
+        try:
+            if not (path and os.path.isfile(path)):
+                continue
+            with open(path, encoding="utf-8") as f:
+                for raw in f:
+                    line = raw.strip()
+                    if not line or line.startswith("#") or "=" not in line:
+                        continue
+                    if line.lower().startswith("export "):
+                        line = line[7:]
+                    key, val = line.split("=", 1)
+                    key = key.strip()
+                    val = val.strip().strip('"').strip("'")
+                    if key:
+                        os.environ.setdefault(key, val)
+        except Exception:
+            pass  # never let env loading break startup
+
+
 def _load_prefs() -> dict:
     try:
         with open(PREFS_FILE, encoding="utf-8") as f:
@@ -506,6 +541,7 @@ def main():
         i = sys.argv.index("--host")
         if i + 1 < len(sys.argv):
             os.environ["COPILOT_HOST"] = sys.argv[i + 1]
+    _load_env_file()   # pull proxy / env settings from a .env so the SDK inherits them
     api = Api()
     window = webview.create_window(
         "Copilot Desktop",

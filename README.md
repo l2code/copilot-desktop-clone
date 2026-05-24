@@ -97,6 +97,19 @@ Notes:
   downloaded `.whl` files and install offline with
   `pip install --no-index --find-links wheels -r requirements.txt`.
 
+## Behind a corporate proxy
+
+The app does **not** read arbitrary project `.env` files. Network access (the
+Copilot SDK subprocess) uses standard proxy environment variables —
+`HTTPS_PROXY`, `HTTP_PROXY`, `NO_PROXY` — inherited from the app's process.
+
+- If you launch from a shell that already exports those (e.g. where the Copilot
+  CLI worked), they're inherited automatically.
+- For double-click launches, the app loads a `.env` next to `app.py` at startup.
+  Copy `example.env` → `.env` and add your proxy lines (it's gitignored). Or set
+  `COPILOT_ENV_FILE` (see `run.bat`) to point at an existing `.env` without
+  copying it. Existing environment variables are never overridden.
+
 ## Notes / next steps
 - Tool permissions default to asking before file edits, shell commands, URL
   access, and MCP tool use. Reads are allowed, and Plan mode rejects actions
