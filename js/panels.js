@@ -129,7 +129,6 @@ function renderPermRules(){
   }).join('');
 }
 function setPerm(k,p){ permRules[k]=p; if(backendReady){ try{ window.pywebview.api.set_perm_rules(permRules); }catch(e){} } renderPermRules(); }
-function setAllPerm(p){ PERM_KINDS.forEach(([k])=>permRules[k]=p); if(backendReady){ try{ window.pywebview.api.set_perm_rules(permRules); }catch(e){} } renderPermRules(); }
 function closeSettings(){ document.getElementById('settingsModal').classList.remove('open'); }
 // Custom instructions and MCP servers are now two separate, focused dialogs.
 async function openInstructions(){
@@ -290,16 +289,8 @@ function toggleMcpJson(){
   if(show){ document.getElementById('mcpText').value = Object.keys(mcpServers).length ? JSON.stringify(mcpServers, null, 2) : ''; }
 }
 function renderSettings(){
-  document.querySelectorAll('#reasoningRow .seg').forEach(b=>{
-    b.classList.toggle('on', b.dataset.level === currentReasoning);
-  });
   document.getElementById('settingsAccount').textContent =
     backendReady ? 'Connected to GitHub Copilot' : 'Demo mode (no backend)';
-}
-function setReasoning(level){
-  currentReasoning = level;
-  renderSettings();
-  if(backendReady) window.pywebview.api.set_model(MODELS[modelIdx], level);
 }
 function clearHistory(){
   askConfirm('Delete all conversations? This can\u2019t be undone.', doClearHistory, 'Delete all');

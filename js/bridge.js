@@ -106,7 +106,7 @@ function selectModel(i){
   const name = MODELS[i];
   document.getElementById('modelName').textContent = name;
   document.getElementById('modelDropdown').classList.remove('open');
-  if(backendReady) window.pywebview.api.set_model(name, currentReasoning);
+  if(backendReady) window.pywebview.api.set_model(name);
 }
 // close the menu when clicking elsewhere
 document.addEventListener('click', (e)=>{

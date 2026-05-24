@@ -220,33 +220,19 @@
         <div class="set-val" id="settingsAccount">—</div>
       </div>
       <div class="set-row">
-        <div class="set-label">Reasoning effort</div>
-        <div class="seg-group" id="reasoningRow">
-          <button class="seg" data-level="low"   onclick="setReasoning('low')">Low</button>
-          <button class="seg" data-level="medium" onclick="setReasoning('medium')">Medium</button>
-          <button class="seg" data-level="high"  onclick="setReasoning('high')">High</button>
-          <button class="seg" data-level="xhigh" onclick="setReasoning('xhigh')">X-High</button>
-        </div>
-      </div>
-      <div class="set-row">
         <div class="set-label">Tool permissions</div>
         <div class="set-val" style="margin-bottom:8px">What Copilot may do without asking. Reads are always allowed; Plan mode is read-only.</div>
         <div id="permRules"></div>
-        <div class="seg-group" style="margin-top:10px">
-          <button class="seg" onclick="setAllPerm('allow')">Allow all</button>
-          <button class="seg" onclick="setAllPerm('ask')">Ask for all</button>
-          <button class="seg" onclick="setAllPerm('deny')">Deny all</button>
-        </div>
       </div>
-      <div class="set-row">
+      <div class="set-row set-row-inline">
         <div class="set-label">Custom instructions</div>
         <button class="seg" onclick="openInstructions()">Edit…</button>
       </div>
-      <div class="set-row">
+      <div class="set-row set-row-inline">
         <div class="set-label">MCP servers</div>
         <button class="seg" onclick="openMcp()">Manage…</button>
       </div>
-      <div class="set-row">
+      <div class="set-row set-row-inline">
         <div class="set-label">Chat history</div>
         <button class="danger-btn" onclick="clearHistory()">Clear all conversations</button>
       </div>

@@ -2,7 +2,6 @@
 let conversations = [];     // [{id,title,updated,cwd}] for the sidebar
 let currentConvId = null;
 let currentMessages = [];   // [{role:'user'|'assistant', content}]
-let currentReasoning = 'medium';
 let autoApprove = false;
 let currentCwd = null;      // working folder of the active chat (matches the composer)
 
