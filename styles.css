@@ -440,13 +440,12 @@
   .terminal-panel{display:none;flex-direction:column;flex-shrink:0;height:300px;
     border-top:1px solid var(--border);background:#0a0d12}
   .terminal-panel.open{display:flex}
-  .term-tabs{display:flex;align-items:flex-end;gap:2px;height:36px;padding:0 6px;
-    background:var(--bg);border-bottom:1px solid var(--border)}
-  .term-tab{display:flex;align-items:center;gap:6px;height:28px;padding:0 8px 0 12px;align-self:flex-end;
-    background:transparent;color:var(--text-dim);font-size:12px;border:1px solid transparent;
-    border-bottom:none;border-radius:7px 7px 0 0;max-width:220px;margin-bottom:-1px;cursor:pointer}
-  .term-tab:hover{color:var(--text)}
-  .term-tab.active{background:#0a0d12;color:var(--text);border-color:var(--border)}
+  .term-tabs{display:flex;align-items:center;gap:6px;height:38px;padding:0 8px;background:#0a0d12}
+  .term-tab{display:flex;align-items:center;gap:6px;height:26px;padding:0 6px 0 10px;align-self:center;
+    background:var(--bg-elev);color:var(--text-dim);font-size:12px;border:1px solid transparent;
+    border-radius:8px;max-width:220px;cursor:pointer}
+  .term-tab:hover{color:var(--text);background:var(--bg-elev-2)}
+  .term-tab.active{background:var(--bg-elev-2);color:var(--text);border-color:var(--border)}
   .term-tab svg{width:12px;height:12px;fill:var(--text-dim);flex-shrink:0}
   .term-tab .tab-cwd{font-family:var(--mono);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .term-tab .tab-x{margin-left:2px;width:16px;height:16px;border-radius:4px;display:inline-flex;
