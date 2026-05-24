@@ -143,7 +143,23 @@ async function openUsage(){
   body.innerHTML = keys.map(k=>renderQuota(k, quota[k])).join('');
 }
 
-function openSettings(){ renderSettings(); loadPermRulesUI(); document.getElementById('settingsModal').classList.add('open'); }
+function openSettings(){ renderSettings(); loadPermRulesUI(); loadDiscoveryUI(); document.getElementById('settingsModal').classList.add('open'); }
+let _discoveryOn = true;
+async function loadDiscoveryUI(){
+  if(backendReady){ try{ const r = await window.pywebview.api.get_config_discovery(); _discoveryOn = !(r && r.on === false); }catch(e){} }
+  renderDiscovery();
+}
+function renderDiscovery(){
+  const on = document.getElementById('discOn'), off = document.getElementById('discOff');
+  if(on) on.classList.toggle('on', _discoveryOn);
+  if(off) off.classList.toggle('on', !_discoveryOn);
+}
+async function setDiscovery(on){
+  _discoveryOn = !!on; renderDiscovery();
+  if(backendReady){ try{ await window.pywebview.api.set_config_discovery(_discoveryOn); }catch(e){} }
+  flashBanner(_discoveryOn ? 'Discovering ~/.copilot config' : 'Discovery off — fewer MCP tools');
+  newChat();   // session was recreated
+}
 const PERM_KINDS = [['write','File edits'],['shell','Shell commands'],['url','Network / URLs'],['mcp','MCP tools']];
 let permRules = {};
 async function loadPermRulesUI(){

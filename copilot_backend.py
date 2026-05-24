@@ -50,6 +50,11 @@ class CopilotBackend:
         self.perm_rules = {"write": "ask", "shell": "ask", "url": "ask",
                            "mcp": "ask", "memory": "allow", "hook": "ask"}
         self._user_event_ids = []        # ids of user.message events, for undo
+        # Discover instructions + MCP servers from .github / ~/.copilot. Discovered
+        # MCP tools count toward the Copilot API's 128-tool-per-request cap, so this
+        # can be toggled off (or via COPILOT_NO_DISCOVERY=1) to stay under the limit.
+        self.config_discovery = (os.environ.get("COPILOT_NO_DISCOVERY", "").lower()
+                                 not in ("1", "true", "yes"))
         self.client: CopilotClient | None = None
         self.session = None
         self._on_delta = None
@@ -233,10 +238,10 @@ class CopilotBackend:
 
     async def _make_session(self):
         # Config discovery loads instructions + MCP servers from .github and the
-        # user's ~/.copilot. It's great, but if a discovered MCP server can't be
-        # reached (e.g. a local Neo4j memory server that isn't running) it can stall
-        # session creation. Set COPILOT_NO_DISCOVERY=1 to skip it.
-        discover = os.environ.get("COPILOT_NO_DISCOVERY", "").lower() not in ("1", "true", "yes")
+        # user's ~/.copilot. Discovered MCP tools count toward the API's 128-tool
+        # cap and an unreachable server can stall session creation, so it can be
+        # turned off at runtime (Settings) or via COPILOT_NO_DISCOVERY=1.
+        discover = self.config_discovery
         kwargs = dict(
             on_permission_request=self._handle_permission,
             model=self.model,
@@ -266,6 +271,10 @@ class CopilotBackend:
 
     async def set_working_dir(self, path):
         self.working_dir = path
+        await self._recreate()
+
+    async def set_config_discovery(self, on):
+        self.config_discovery = bool(on)
         await self._recreate()
 
     async def set_instructions(self, text):

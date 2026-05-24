@@ -350,6 +350,18 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def get_config_discovery(self):
+        return {"ok": True, "on": bool(self.backend.config_discovery) if self.backend else True}
+
+    def set_config_discovery(self, on):
+        if not self.backend:
+            return {"ok": False, "error": "Backend not started"}
+        try:
+            self._run(self.backend.set_config_discovery(bool(on)))
+            return {"ok": True, "on": bool(on)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     # ----- integrated terminals (tabbed) -----
 
     def term_new(self):

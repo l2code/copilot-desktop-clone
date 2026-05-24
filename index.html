@@ -246,6 +246,14 @@
         <div class="set-val" style="margin-bottom:8px">What Copilot may do without asking. Reads are always allowed; Plan mode is read-only.</div>
         <div id="permRules"></div>
       </div>
+      <div class="set-row">
+        <div class="set-label">Discover ~/.copilot config</div>
+        <div class="set-val" style="margin-bottom:8px">Load instructions &amp; MCP servers from .github and ~/.copilot. Turn off if you hit the Copilot "tools array too long" limit (too many MCP tools).</div>
+        <span class="seg-group">
+          <button class="seg" id="discOn" onclick="setDiscovery(true)">On</button>
+          <button class="seg" id="discOff" onclick="setDiscovery(false)">Off</button>
+        </span>
+      </div>
       <div class="set-row set-row-inline">
         <div class="set-label">Custom instructions</div>
         <button class="seg" onclick="openInstructions()">Edit…</button>
