@@ -29,6 +29,7 @@ import webview
 logging.getLogger("pywebview").setLevel(logging.CRITICAL)
 
 from copilot_backend import CopilotBackend
+from terminal import Terminal
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = os.path.join(HERE, "index.html")
@@ -84,6 +85,13 @@ class Api:
     def __init__(self):
         self.window = None
         self.backend: CopilotBackend | None = None
+        # Integrated terminal (PowerShell on Windows). Streams to the UI; its cwd
+        # tracks the active project folder.
+        self.terminal = Terminal()
+        self.terminal.set_handlers(
+            on_output=lambda t: self._js("onTermOutput", t),
+            on_done=lambda code: self._js("onTermDone", code),
+        )
         # The SDK is async; run one event loop in a background thread and
         # marshal coroutines onto it from the (sync) JS-facing methods.
         self.loop = asyncio.new_event_loop()
@@ -114,6 +122,7 @@ class Api:
                    or os.path.expanduser("~"))
         if not (workdir and os.path.isdir(workdir)):   # saved folder gone? fall back to home
             workdir = os.path.expanduser("~")
+        self.terminal.set_cwd(workdir)
         self.backend = CopilotBackend(github_token=token, working_dir=workdir)
         self.backend.set_handlers(
             on_delta=lambda c: self._js("onCopilotDelta", c),
@@ -240,6 +249,7 @@ class Api:
             return {"ok": False, "error": "Backend not started"}
         try:
             self._run(self.backend.set_working_dir(path))
+            self.terminal.set_cwd(path)   # keep the integrated terminal in the same folder
             if remember:
                 try:
                     prefs = _load_prefs(); prefs["workdir"] = path; _save_prefs(prefs)
@@ -248,6 +258,24 @@ class Api:
             return {"ok": True, "workdir": path}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+    # ----- integrated terminal -----
+
+    def term_init(self):
+        """Return the terminal's current folder + shell name (for the prompt)."""
+        return {"ok": True, "cwd": self.terminal.cwd, "shell": self.terminal.shell_name}
+
+    def term_run(self, command):
+        """Run a command in the active project folder; output streams via onTermOutput."""
+        self.terminal.run(command)
+        return {"ok": True}
+
+    def term_interrupt(self):
+        self.terminal.interrupt()
+        return {"ok": True}
+
+    def term_cwd(self):
+        return {"ok": True, "cwd": self.terminal.cwd}
 
     def read_image(self, path, max_bytes=8000000):
         """Read an image file and return it base64-encoded for a BlobAttachment."""

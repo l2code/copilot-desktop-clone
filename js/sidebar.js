@@ -161,6 +161,7 @@ function setWdDisplay(path){
   const base = String(path).replace(/[\\/]+$/,'').split(/[\\/]/).pop() || path;
   w.textContent = base;
   const b = document.getElementById('wdBtn'); if(b) b.title = 'Working folder: ' + path;
+  if(typeof termSetCwd === 'function') termSetCwd(path);   // keep terminal prompt in sync
   renderSidebar();
 }
 const MODES = [
