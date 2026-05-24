@@ -74,6 +74,29 @@ banner shows the error (usually "sign in first").
    ◄──── assistant.message_delta events stream back as you type ────
 ```
 
+## Running on a machine that resets (e.g. a weekly reimage)
+
+If your machine reinstalls Python every week but you don't want to reinstall the
+Python packages each time, keep this folder somewhere persistent (e.g. OneDrive)
+and vendor the dependencies once:
+
+1. **One time, with internet:** double-click `vendor-setup.bat`. It installs the
+   packages into a local `deps/` folder beside the script (not into Python).
+2. **Every session after that:** double-click `run.bat`. It points the freshly
+   installed Python at `deps/` via `PYTHONPATH` and launches the app — no `pip`.
+
+Because `deps/` is just files, OneDrive persistence keeps it across reimages.
+Notes:
+- Pin Python to **3.12** (the version with prebuilt `pythonnet` wheels). If your
+  weekly install changes minor version, re-run `vendor-setup.bat` once.
+- Turn on **"Always keep on this device"** for the OneDrive folder so the files
+  are present offline.
+- `deps/` contains native files (`pythonnet`'s `.pyd`/`.dll`). If your employer's
+  policy restricts storing binaries/executables on OneDrive the same way it does
+  `.exe`, confirm that's allowed — otherwise keep a local `wheels/` folder of
+  downloaded `.whl` files and install offline with
+  `pip install --no-index --find-links wheels -r requirements.txt`.
+
 ## Notes / next steps
 - Tool permissions default to asking before file edits, shell commands, URL
   access, and MCP tool use. Reads are allowed, and Plan mode rejects actions

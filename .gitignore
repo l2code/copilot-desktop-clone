@@ -3,6 +3,9 @@
 venv/
 env/
 
+# Vendored dependencies installed by vendor-setup.bat (machine/version-specific)
+deps/
+
 # Python bytecode / caches
 __pycache__/
 *.py[cod]
