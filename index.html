@@ -859,11 +859,12 @@ document.addEventListener('keydown', (e)=>{
 })();
 
 // ===== Conversation state / history =====
-let conversations = [];     // [{id,title,updated}] for the sidebar
+let conversations = [];     // [{id,title,updated,cwd}] for the sidebar
 let currentConvId = null;
 let currentMessages = [];   // [{role:'user'|'assistant', content}]
 let currentReasoning = 'medium';
 let autoApprove = false;
+let currentCwd = null;      // working folder of the active chat (matches the composer)
 
 function newConvId(){ return 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
 
@@ -890,23 +891,33 @@ function projName(cwd){
 function renderSidebar(){
   const list = document.getElementById('chatList');
   if(!list) return;
-  if(!conversations.length){ list.innerHTML = '<div class="sb-empty">No conversations yet</div>'; return; }
   const searchEl = document.getElementById('chatSearch');
   const q = (searchEl ? searchEl.value : '').toLowerCase();
-  const items = q ? conversations.filter(c=>(c.title||'').toLowerCase().includes(q)) : conversations;
-  if(!items.length){ list.innerHTML = '<div class="sb-empty">No matches</div>'; return; }
-  // group by working folder (already sorted by recency)
+  let items = q ? conversations.filter(c=>(c.title||'').toLowerCase().includes(q)) : conversations.slice();
+  // Surface the active chat right away -- even before it has been saved -- so a
+  // brand-new chat (and a freshly picked folder) shows up in the sidebar
+  // immediately, grouped under the same folder shown beneath the composer.
+  if(!q && currentConvId && !items.some(c=>c.id===currentConvId)){
+    const firstUser = currentMessages.find(m=>m.role==='user');
+    items.unshift({id:currentConvId,
+                   title:(firstUser ? firstUser.content.slice(0,60) : 'New chat'),
+                   updated: Date.now()/1000, cwd: currentCwd, _draft:true});
+  }
+  if(!items.length){ list.innerHTML = '<div class="sb-empty">'+(q?'No matches':'No conversations yet')+'</div>'; return; }
+  // group by working folder (active folder first, then by recency)
   const groups = [], idx = {};
   items.forEach(c=>{ const k = c.cwd || ''; if(idx[k] === undefined){ idx[k] = groups.length; groups.push({cwd:k, items:[]}); } groups[idx[k]].items.push(c); });
-  const chatIcon = '<svg viewBox="0 0 16 16"><path d="M1 2.75A.75.75 0 011.75 2h12.5a.75.75 0 01.75.75v8.5a.75.75 0 01-.75.75H5.56l-2.78 2.78A.75.75 0 011.5 14.25V2.75z"/></svg>';
   const folderIcon = '<svg class="proj-ico" viewBox="0 0 16 16"><path d="M1.75 2.5A1.75 1.75 0 000 4.25v7.5C0 12.99.78 14 1.75 14h12.5A1.75 1.75 0 0016 12.25V5.75A1.75 1.75 0 0014.25 4H7.5L6 2.5z"/></svg>';
   list.innerHTML = groups.map(g=>{
     const head = `<div class="proj-head" title="${escapeAttr(g.cwd||'')}">${folderIcon}<span>${escapeHtml(projName(g.cwd))}</span></div>`;
-    const rows = g.items.map(c=>
-      `<div class="chat-item ${c.id===currentConvId?'active':''}" title="${escapeAttr(c.title)}" onclick="openConversation('${c.id}')">
+    const rows = g.items.map(c=>{
+      const del = c._draft ? '' :
+        `<span class="ci-del" title="Delete conversation" onclick="event.stopPropagation();deleteConversation('${c.id}')">&times;</span>`;
+      return `<div class="chat-item ${c.id===currentConvId?'active':''}" title="${escapeAttr(c.title)}" onclick="openConversation('${c.id}')">
          <span class="ci-title">${escapeHtml(c.title)}</span>
          <span class="ci-time">${relTime(c.updated)}</span>
-         <span class="ci-del" title="Delete conversation" onclick="event.stopPropagation();deleteConversation('${c.id}')">&times;</span></div>`).join('');
+         ${del}</div>`;
+    }).join('');
     return head + rows;
   }).join('');
 }
@@ -962,6 +973,11 @@ async function openConversation(id){
   if(!conv) return;
   currentConvId = id;
   currentMessages = conv.messages || [];
+  // Switch the working folder to this chat's project so the composer and the
+  // sidebar's active project stay consistent with the conversation you opened.
+  if(conv.cwd && conv.cwd !== currentCwd && backendReady){
+    try{ const r = await window.pywebview.api.set_working_dir(conv.cwd); if(r && r.ok) setWdDisplay(conv.cwd); }catch(e){}
+  }
   started = true;
   const inner = document.getElementById('threadInner');
   inner.innerHTML = '';
@@ -994,10 +1010,12 @@ async function doCompact(){
 
 // ===== Working folder (what Copilot can read / run commands in) =====
 function setWdDisplay(path){
+  currentCwd = path || null;        // keep the sidebar's active project in sync
   const w = document.getElementById('wdName'); if(!w) return;
   const base = String(path).replace(/[\\/]+$/,'').split(/[\\/]/).pop() || path;
   w.textContent = base;
   const b = document.getElementById('wdBtn'); if(b) b.title = 'Working folder: ' + path;
+  renderSidebar();
 }
 const MODES = [
   {id:'interactive', name:'Interactive', desc:'Works step by step'},
@@ -1651,6 +1669,7 @@ function sendMessage(){
   const attNames = atts.map(a=>a.displayName);
   addUserMessage(text, false, attNames);
   currentMessages.push({role:'user', content:text, attachments:attNames});
+  persistCurrent();   // save now so the chat appears in the sidebar even if the reply errors
   input.value=''; autoGrow(input);
   pendingAttachments = []; renderAttachments(); toggleSend();
 
