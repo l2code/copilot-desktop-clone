@@ -33,6 +33,7 @@ async function initBackend(){
       await loadConversations();
       await loadCommands();
       newChat();
+      refreshUsage();
     } else if(res && res.needsAuth){
       setStatus('warn');
       if(res.host){

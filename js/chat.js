@@ -211,6 +211,7 @@ function onCopilotDone(){
   curTarget = null; curBuf = "";
   if(raw.trim()) currentMessages.push({role:'assistant', content:raw});
   persistCurrent();
+  if(typeof refreshUsage === 'function') refreshUsage();   // usage updates after each reply
   scrollDown();
 }
 function addMessageActions(container, raw){

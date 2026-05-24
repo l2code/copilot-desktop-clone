@@ -109,13 +109,22 @@
   .ci-time{font-size:11px;color:var(--text-faint);flex-shrink:0;margin-left:auto;padding-right:2px}
   .sb-empty{padding:8px 10px;color:var(--text-faint);font-size:12px}
   .sidebar-footer{
-    border-top:1px solid var(--border-soft);padding:10px 12px;display:flex;align-items:center;gap:10px;
+    border-top:1px solid var(--border-soft);padding:10px 12px;display:flex;flex-direction:column;gap:8px;
   }
+  .sf-id{display:flex;align-items:center;gap:10px}
   .avatar{width:28px;height:28px;border-radius:50%;background:linear-gradient(135deg,#2f81f7,#a371f7);
     display:flex;align-items:center;justify-content:center;font-weight:600;font-size:12px;color:#fff;flex-shrink:0}
   .sidebar-footer .uname{font-size:13px;font-weight:500}
   .sidebar-footer .uplan{font-size:11px;color:var(--text-dim)}
   .sidebar-footer .usage-btn{margin-left:auto}
+  /* usage bar in the footer */
+  .sf-usage{display:block;width:100%;background:transparent;border:0;cursor:pointer;padding:2px 0 0;font-family:var(--font)}
+  .sf-usage-top{display:flex;justify-content:space-between;font-size:11px;color:var(--text-dim);margin-bottom:4px}
+  .sf-usage:hover .sf-usage-top{color:var(--text)}
+  .sf-usage-bar{height:6px;border-radius:3px;background:var(--bg);border:1px solid var(--border-soft);overflow:hidden}
+  .sf-usage-fill{height:100%;width:0;background:var(--accent);transition:width .3s}
+  .sf-usage-fill.warn{background:#e3b341}
+  .sf-usage-fill.full{background:#da3633}
   /* connection status dot next to the plan name */
   .status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;
     background:var(--text-faint);margin-right:6px;vertical-align:middle}

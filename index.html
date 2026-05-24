@@ -25,11 +25,17 @@
       <div class="side-label">Projects</div>
       <div class="chat-list" id="chatList"><div class="sb-empty">No conversations yet</div></div>
       <div class="sidebar-footer">
-        <div class="avatar" id="userAvatar">GH</div>
-        <div>
-          <div class="uname" id="userName">GitHub account</div>
-          <div class="uplan"><span class="status-dot" id="statusDot"></span><span id="userPlan">GitHub Copilot</span></div>
+        <div class="sf-id">
+          <div class="avatar" id="userAvatar">GH</div>
+          <div>
+            <div class="uname" id="userName">GitHub account</div>
+            <div class="uplan"><span class="status-dot" id="statusDot"></span><span id="userPlan">GitHub Copilot</span></div>
+          </div>
         </div>
+        <button type="button" class="sf-usage" id="sfUsage" onclick="openUsage()" title="Copilot usage — click for details" style="display:none">
+          <div class="sf-usage-top"><span id="sfUsageLabel">Usage</span><span id="sfUsagePct">—</span></div>
+          <div class="sf-usage-bar"><div class="sf-usage-fill" id="sfUsageFill"></div></div>
+        </button>
       </div>
     </aside>
 

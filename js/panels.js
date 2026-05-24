@@ -86,6 +86,36 @@ function renderQuota(key, q){
     <div class="usage-bar"><div class="usage-fill ${cls}" style="width:${usedPct}%"></div></div>
     <div class="set-val">${used} / ${ent} used &middot; ${remPct}% remaining${reset}${over}</div></div>`;
 }
+// Compact footer indicator: headline % used + colored bar. Refreshed on connect
+// and after each reply (usage is reported per request).
+async function refreshUsage(){
+  const w = document.getElementById('sfUsage'); if(!w) return;
+  if(!backendReady){ w.style.display = 'none'; return; }
+  let res; try{ res = await window.pywebview.api.get_usage(); }catch(e){ return; }
+  if(!res || !res.ok){ return; }
+  const q = res.quota || {};
+  const key = ['premium_interactions','chat','completions'].find(k=>q[k]) || Object.keys(q)[0];
+  const item = key ? q[key] : null;
+  if(!item){ w.style.display = 'none'; return; }
+  const fill = document.getElementById('sfUsageFill');
+  const pctEl = document.getElementById('sfUsagePct');
+  document.getElementById('sfUsageLabel').textContent =
+    ({premium_interactions:'Premium requests',chat:'Chat requests',completions:'Code completions'})[key] || prettyQuota(key);
+  if(item.unlimited){
+    pctEl.textContent = 'Unlimited';
+    fill.style.width = '100%'; fill.className = 'sf-usage-fill';
+    w.style.display = 'block'; return;
+  }
+  let used = null;
+  if(typeof item.remaining_percentage === 'number') used = 100 - item.remaining_percentage;
+  else if(item.entitlement) used = (item.used || 0) / item.entitlement * 100;
+  if(used === null){ w.style.display = 'none'; return; }
+  used = Math.max(0, Math.min(100, Math.round(used)));
+  pctEl.textContent = used + '% used';
+  fill.style.width = used + '%';
+  fill.className = 'sf-usage-fill' + (used >= 90 ? ' full' : (used >= 70 ? ' warn' : ''));
+  w.style.display = 'block';
+}
 async function openUsage(){
   const modal = document.getElementById('usageModal');
   const body = document.getElementById('usageBody');
