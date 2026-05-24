@@ -92,6 +92,28 @@ async function startSignIn(){
     document.getElementById('authMsg').textContent = 'Sign-in could not start: ' + e + '.';
   }
 }
+// Re-check auth without launching the in-app device flow -- for when the user has
+// already signed in elsewhere (e.g. the Copilot CLI). Just re-runs start().
+async function recheckAuth(){
+  const link = document.getElementById('authRecheck');
+  if(link){ link.disabled = true; link.textContent = 'Checking…'; }
+  let res;
+  try{ res = await window.pywebview.api.start(); }catch(e){ res = null; }
+  if(res && res.ok){
+    showAuth(false);
+    backendReady = true; setStatus('ok');
+    if(res.models && res.models.length){ MODELS = res.models; modelIdx = 0; document.getElementById('modelName').textContent = MODELS[0]; }
+    if(res.workdir) setWdDisplay(res.workdir);
+    setAccount(res.login);
+    try{ await loadConversations(); await loadCommands(); }catch(e){}
+    newChat();
+    flashBanner('Signed in' + (res.login ? ' as ' + res.login : ''));
+    return;
+  }
+  if(link){ link.disabled = false; link.textContent = 'Already signed in (e.g. via the Copilot CLI)? Re-check'; }
+  document.getElementById('authMsg').textContent =
+    'Still not signed in. If you just logged in with the Copilot CLI, give it a moment, then re-check — or restart the app.';
+}
 function onAuthCode(url, code){
   const c = document.getElementById('authCode'); c.style.display = 'block';
   c.innerHTML = `Open <a href="${escapeAttr(url)}" target="_blank" rel="noopener">${escapeHtml(url)}</a><br>and enter code:&nbsp; <b>${escapeHtml(code)}</b>`;
