@@ -83,26 +83,28 @@
   .side-label{padding:10px 18px 6px;font-size:11px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-faint);font-weight:600}
   .chat-list{flex:1;overflow-y:auto;padding:0 8px}
   .chat-item{
+    position:relative;
     padding:6px 10px 6px 30px;border-radius:8px;color:var(--text-dim);cursor:pointer;
-    font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     display:flex;align-items:center;gap:8px;
   }
   .chat-item svg{width:14px;height:14px;fill:currentColor;flex-shrink:0;opacity:.7}
   .chat-item:hover{background:var(--bg-elev)}
   .chat-item.active{background:var(--bg-elev-2);color:var(--text)}
   .chat-item .ci-title{flex:1;overflow:hidden;text-overflow:ellipsis}
-  .ci-del{opacity:0;color:var(--text-dim);font-size:15px;line-height:1;padding:0 2px;flex-shrink:0}
-  .chat-item:hover .ci-del{opacity:.6}
+  .ci-del{position:absolute;right:8px;top:0;bottom:0;display:flex;align-items:center;opacity:0;color:var(--text-dim);font-size:15px;line-height:1}
+  .chat-item:hover .ci-time{opacity:0}
+  .chat-item:hover .ci-del{opacity:.7}
   .ci-del:hover{opacity:1;color:var(--text)}
   .sb-top{height:40px;flex-shrink:0}
   .sb-toggle{position:fixed;top:6px;left:9px;z-index:50;width:30px;height:30px;border-radius:7px;
     display:flex;align-items:center;justify-content:center;color:var(--text-dim);cursor:pointer;background:transparent}
   .sb-toggle:hover{background:var(--bg-elev);color:var(--text)}
   .sb-toggle svg{width:17px;height:17px}
-  .proj-head{display:flex;align-items:center;gap:8px;padding:11px 10px 4px;color:var(--text-dim);font-size:13px;font-weight:500}
+  .proj-head{display:flex;align-items:center;gap:8px;padding:11px 10px 4px;color:var(--text-dim);font-size:12px;font-weight:500}
   .proj-head .proj-ico{width:13px;height:13px;fill:currentColor;opacity:.8;flex-shrink:0}
   .proj-head span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .ci-time{font-size:11px;color:var(--text-faint);flex-shrink:0;margin-left:6px}
+  .ci-time{font-size:11px;color:var(--text-faint);flex-shrink:0;margin-left:auto;padding-right:2px}
   .sb-empty{padding:8px 10px;color:var(--text-faint);font-size:12px}
   .sidebar-footer{
     border-top:1px solid var(--border-soft);padding:10px 12px;display:flex;align-items:center;gap:10px;
