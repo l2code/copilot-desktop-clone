@@ -130,7 +130,7 @@ function closeTopOverlay(){
   if(cm && cm.classList.contains('open')){ confirmCancel(); return true; }
   const pm = document.getElementById('permModal');
   if(pm && pm.classList.contains('open')){ resolvePerm('reject'); return true; }  // Esc on a permission prompt = reject
-  for(const id of ['customizeModal','usageModal','settingsModal']){
+  for(const id of ['instrModal','mcpModal','usageModal','settingsModal']){
     const m = document.getElementById(id);
     if(m && m.classList.contains('open')){ m.classList.remove('open'); return true; }
   }

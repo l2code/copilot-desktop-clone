@@ -131,12 +131,20 @@ function renderPermRules(){
 function setPerm(k,p){ permRules[k]=p; if(backendReady){ try{ window.pywebview.api.set_perm_rules(permRules); }catch(e){} } renderPermRules(); }
 function setAllPerm(p){ PERM_KINDS.forEach(([k])=>permRules[k]=p); if(backendReady){ try{ window.pywebview.api.set_perm_rules(permRules); }catch(e){} } renderPermRules(); }
 function closeSettings(){ document.getElementById('settingsModal').classList.remove('open'); }
-async function openCustomize(){
+// Custom instructions and MCP servers are now two separate, focused dialogs.
+async function openInstructions(){
   closeSettings();
-  document.getElementById('customizeModal').classList.add('open');
-  document.getElementById('mcpErr').textContent = '';
+  document.getElementById('instrModal').classList.add('open');
   if(backendReady){
     try{ const r = await window.pywebview.api.get_instructions(); document.getElementById('instrText').value = (r && r.text) || ''; }catch(e){}
+  }
+}
+function closeInstructions(){ document.getElementById('instrModal').classList.remove('open'); }
+async function openMcp(){
+  closeSettings();
+  document.getElementById('mcpModal').classList.add('open');
+  document.getElementById('mcpErr').textContent = '';
+  if(backendReady){
     try{ const m = await window.pywebview.api.get_mcp(); mcpServers = (m && m.servers) || {}; }catch(e){ mcpServers = {}; }
     try{ const st = await window.pywebview.api.get_mcp_status(); mcpStatus = (st && st.status) || {}; mcpDisabled = (st && st.disabled) || []; }catch(e){}
     document.getElementById('mcpForm').style.display = 'none';
@@ -144,7 +152,7 @@ async function openCustomize(){
     renderMcpList();
   }
 }
-function closeCustomize(){ document.getElementById('customizeModal').classList.remove('open'); }
+function closeMcp(){ document.getElementById('mcpModal').classList.remove('open'); }
 function flashBanner(msg){ showBanner('ok', msg); setTimeout(()=>{ const b=document.getElementById('bannerHost'); if(b) b.innerHTML=''; }, 3000); }
 let _confirmCb = null;
 function askConfirm(msg, onYes, okLabel){
@@ -159,7 +167,7 @@ async function saveInstructions(){
   if(!backendReady) return;
   const t = document.getElementById('instrText').value;
   try{ await window.pywebview.api.set_instructions(t); }catch(e){}
-  closeCustomize(); newChat(); flashBanner('Custom instructions saved');
+  closeInstructions(); newChat(); flashBanner('Custom instructions saved');
 }
 async function saveMcp(){
   if(!backendReady) return;
