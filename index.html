@@ -890,7 +890,7 @@ function renderSidebar(){
     const head = `<div class="proj-head" title="${escapeAttr(g.cwd||'')}">${folderIcon}<span>${escapeHtml(projName(g.cwd))}</span></div>`;
     const rows = g.items.map(c=>
       `<div class="chat-item ${c.id===currentConvId?'active':''}" title="${escapeAttr(c.title)}" onclick="openConversation('${c.id}')">
-         ${chatIcon}<span class="ci-title">${escapeHtml(c.title)}</span>
+         <span class="ci-title">${escapeHtml(c.title)}</span>
          <span class="ci-time">${relTime(c.updated)}</span>
          <span class="ci-del" title="Delete conversation" onclick="event.stopPropagation();deleteConversation('${c.id}')">&times;</span></div>`).join('');
     return head + rows;
