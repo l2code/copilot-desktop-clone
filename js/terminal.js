@@ -48,8 +48,11 @@ function updateLivePrompt(){
 // Reflect the active folder in the prompt + header.
 function termSetCwd(path){
   termCwd = path || '';
+  const base = termCwd.replace(/[\\/]+$/,'').split(/[\\/]/).pop() || termCwd;
   const lbl = document.getElementById('termCwdLabel');
-  if(lbl){ lbl.textContent = termCwd; lbl.title = termCwd; }
+  if(lbl) lbl.textContent = base ? base : '';
+  const tab = document.getElementById('termTab');
+  if(tab) tab.title = termCwd;
   updateLivePrompt();
 }
 

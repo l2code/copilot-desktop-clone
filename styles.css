@@ -435,30 +435,37 @@
     border-radius:8px;font-size:12.5px;cursor:pointer;font-family:var(--font)}
   .danger-btn:hover{background:#da363325}
 
-  /* integrated terminal */
+  /* integrated terminal (Codex-style: slim tab strip + clean inline prompt) */
   .icon-btn.active{background:var(--bg-elev);color:var(--accent)}
-  .terminal-panel{display:none;flex-direction:column;flex-shrink:0;height:280px;
+  .terminal-panel{display:none;flex-direction:column;flex-shrink:0;height:300px;
     border-top:1px solid var(--border);background:#0a0d12}
   .terminal-panel.open{display:flex}
-  .term-head{display:flex;align-items:center;gap:10px;padding:6px 10px 6px 14px;
-    border-bottom:1px solid var(--border-soft);background:var(--bg-elev)}
-  .term-title{display:flex;align-items:center;gap:6px;font-size:12px;font-weight:600;color:var(--text)}
-  .term-title svg{width:13px;height:13px;fill:var(--text-dim)}
-  .term-cwd{flex:1;min-width:0;font-size:11.5px;color:var(--text-dim);font-family:var(--mono);
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;direction:rtl;text-align:left}
-  .term-actions{display:flex;align-items:center;gap:6px}
-  .term-actions .seg{padding:3px 9px;font-size:11.5px}
+  .term-tabs{display:flex;align-items:flex-end;gap:2px;height:36px;padding:0 6px;
+    background:var(--bg);border-bottom:1px solid var(--border)}
+  .term-tab{display:flex;align-items:center;gap:7px;height:28px;padding:0 12px;align-self:flex-end;
+    background:#0a0d12;color:var(--text);font-size:12px;border:1px solid var(--border);
+    border-bottom:none;border-radius:7px 7px 0 0;max-width:60%;margin-bottom:-1px}
+  .term-tab svg{width:12px;height:12px;fill:var(--text-dim);flex-shrink:0}
+  .term-tab .tab-cwd{color:var(--text-dim);font-size:11.5px;font-family:var(--mono);
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .term-tabs-spacer{flex:1}
+  .term-tabbtn{width:28px;height:28px;border-radius:6px;display:flex;align-items:center;justify-content:center;
+    color:var(--text-dim);background:transparent;border:0;cursor:pointer;align-self:center}
+  .term-tabbtn:hover{background:var(--bg-elev-2);color:var(--text)}
+  .term-tabbtn svg{width:13px;height:13px;fill:currentColor}
+  .term-tabbtn:disabled{opacity:.35;cursor:default}
   .term-out{flex:1;overflow:auto;padding:10px 14px;font-family:var(--mono);font-size:12.5px;
-    line-height:1.5;color:#c9d1d9;white-space:pre-wrap;word-break:break-word;cursor:text}
-  .term-prompt-echo{color:var(--accent)}
+    line-height:1.55;color:#c9d1d9;white-space:pre-wrap;word-break:break-word;cursor:text}
+  .term-prompt-echo{color:#7aa2f7}
   .term-cmd{color:#e6edf3}
   .term-sys{color:var(--text-dim)}
   .term-err{color:#ff7b72}
-  /* live input sits inline at the bottom of the same scroll area (no separate box) */
+  /* live input sits inline at the bottom of the same scroll area (no box, no outline) */
   .term-liveline{display:flex;align-items:baseline}
-  .term-prompt{color:var(--accent);white-space:pre-wrap;word-break:break-all}
-  .term-input{flex:1;min-width:40px;background:transparent;border:0;outline:none;color:#e6edf3;
-    font-family:var(--mono);font-size:12.5px;line-height:1.5;padding:0;caret-color:var(--accent)}
+  .term-prompt{color:#7aa2f7;white-space:pre-wrap;word-break:break-all}
+  .term-input{flex:1;min-width:40px;background:transparent;border:0;color:#e6edf3;
+    font-family:var(--mono);font-size:12.5px;line-height:1.55;padding:0;caret-color:#7aa2f7}
+  .term-input:focus,.term-input:focus-visible{outline:none}
   .term-input:disabled{opacity:.7}
 
   @media (max-width:900px){
