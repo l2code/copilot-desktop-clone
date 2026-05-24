@@ -146,7 +146,7 @@ class CopilotBackend:
         try:
             await asyncio.wait_for(self.client.start(), timeout=45)
         except asyncio.TimeoutError:
-            raise RuntimeError("Timed out launching the Copilot CLI (check COPILOT_EXE path / proxy).")
+            raise RuntimeError("Timed out launching the bundled Copilot CLI (check proxy settings).")
         try:
             status = await asyncio.wait_for(self.client.get_auth_status(), timeout=45)
         except asyncio.TimeoutError:
