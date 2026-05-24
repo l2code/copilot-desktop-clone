@@ -160,11 +160,6 @@ function setWdDisplay(path){
   const w = document.getElementById('wdName'); if(!w) return;
   const base = String(path).replace(/[\\/]+$/,'').split(/[\\/]/).pop() || path;
   w.textContent = base;
-  const tp = document.getElementById('topbarProject');
-  if(tp){
-    tp.textContent = base ? base : 'Choose a project folder';
-    tp.title = path || '';
-  }
   const b = document.getElementById('wdBtn'); if(b) b.title = 'Working folder: ' + path;
   renderSidebar();
 }
