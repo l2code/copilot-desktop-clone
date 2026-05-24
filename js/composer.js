@@ -66,6 +66,7 @@ const SLASH_DEFS = [
   {cmd:'/clear',    desc:'Start a new conversation',       run:()=>newChat()},
   {cmd:'/reset',    desc:'Start a new conversation',       run:()=>newChat()},
   {cmd:'/model',    desc:'Select the AI model',            run:()=>openModelMenu()},
+  {cmd:'/mcp',      desc:'Manage MCP servers',             run:()=>openMcp()},
   {cmd:'/usage',    desc:'Show usage & quota',             run:()=>openUsage()},
   {cmd:'/copy',     desc:'Copy the last response',         run:()=>copyLastResponse()},
   {cmd:'/share',    desc:'Copy conversation as Markdown',  run:()=>copyConversationMd()},
