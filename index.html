@@ -595,6 +595,20 @@
   </div>
 </div>
 
+<!-- Confirm modal (destructive actions) -->
+<div class="modal-overlay" id="confirmModal">
+  <div class="modal" style="width:380px;max-width:calc(100% - 40px)">
+    <div class="modal-head"><span id="confirmTitle">Confirm</span></div>
+    <div class="modal-body">
+      <div class="set-val" id="confirmMsg" style="margin-bottom:16px"></div>
+      <div class="perm-actions">
+        <button class="seg" onclick="confirmCancel()">Cancel</button>
+        <button class="danger-btn" id="confirmOk" onclick="confirmAccept()">Delete</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Usage modal -->
 <div class="modal-overlay" id="usageModal">
   <div class="modal">
@@ -777,6 +791,8 @@ function closeTopOverlay(){
   if(dd && dd.classList.contains('open')){ dd.classList.remove('open'); return true; }
   const mdd = document.getElementById('modeDD');
   if(mdd && mdd.classList.contains('open')){ mdd.classList.remove('open'); return true; }
+  const cm = document.getElementById('confirmModal');
+  if(cm && cm.classList.contains('open')){ confirmCancel(); return true; }
   const pm = document.getElementById('permModal');
   if(pm && pm.classList.contains('open')){ resolvePerm('reject'); return true; }  // Esc on a permission prompt = reject
   for(const id of ['customizeModal','usageModal','settingsModal']){
@@ -898,8 +914,13 @@ function renderSidebar(){
     return head + rows;
   }).join('');
 }
-async function deleteConversation(id){
-  if(!backendReady) return;
+function deleteConversation(id){
+  const conv = conversations.find(c=>c.id===id);
+  const title = (conv && conv.title) ? conv.title : 'this conversation';
+  askConfirm('Delete \u201c' + title + '\u201d? This can\u2019t be undone.', ()=>doDeleteConversation(id), 'Delete');
+}
+async function doDeleteConversation(id){
+  if(!window.pywebview || !window.pywebview.api) return;
   try{ await window.pywebview.api.delete_conversation(id); }catch(e){}
   if(id === currentConvId) newChat();
   await loadConversations();
@@ -1165,6 +1186,15 @@ async function openCustomize(){
 }
 function closeCustomize(){ document.getElementById('customizeModal').classList.remove('open'); }
 function flashBanner(msg){ showBanner('ok', msg); setTimeout(()=>{ const b=document.getElementById('bannerHost'); if(b) b.innerHTML=''; }, 3000); }
+let _confirmCb = null;
+function askConfirm(msg, onYes, okLabel){
+  document.getElementById('confirmMsg').textContent = msg;
+  document.getElementById('confirmOk').textContent = okLabel || 'Delete';
+  _confirmCb = onYes || null;
+  document.getElementById('confirmModal').classList.add('open');
+}
+function confirmCancel(){ document.getElementById('confirmModal').classList.remove('open'); _confirmCb = null; }
+function confirmAccept(){ const cb = _confirmCb; confirmCancel(); if(cb) cb(); }
 async function saveInstructions(){
   if(!backendReady) return;
   const t = document.getElementById('instrText').value;
@@ -1303,8 +1333,11 @@ function setReasoning(level){
   renderSettings();
   if(backendReady) window.pywebview.api.set_model(MODELS[modelIdx], level);
 }
-async function clearHistory(){
-  if(backendReady){
+function clearHistory(){
+  askConfirm('Delete all conversations? This can\u2019t be undone.', doClearHistory, 'Delete all');
+}
+async function doClearHistory(){
+  if(window.pywebview && window.pywebview.api){
     try{ await window.pywebview.api.clear_history(); }catch(e){}
     await loadConversations();
   }
