@@ -27,7 +27,8 @@ def _dbg(*parts):
     if os.environ.get("COPILOT_DEBUG"):
         print(f"[dbg {time.strftime('%H:%M:%S')}]", *parts, file=sys.stderr, flush=True)
 from copilot.generated.session_events import SessionEventType
-from copilot.generated.rpc import ModeSetRequest, SessionMode, SessionsForkRequest
+from copilot.generated.rpc import (ModeSetRequest, SessionMode, SessionsForkRequest,
+                                   MCPDiscoverRequest)
 from copilot.session import PermissionRequestResult
 
 
@@ -280,6 +281,27 @@ class CopilotBackend:
     async def set_instructions(self, text):
         self.instructions = text or ""
         await self._recreate()
+
+    async def discover_mcp(self):
+        """List MCP servers configured across all sources (.github, ~/.copilot,
+        plugins, builtin) — independent of runtime load, so the UI can show them
+        even before any session activity. Returns JSON-safe dicts."""
+        if not self.client:
+            return []
+        try:
+            res = await self.client.rpc.mcp.discover(
+                MCPDiscoverRequest(working_directory=self.working_dir))
+        except Exception:
+            return []
+        out = []
+        for s in (getattr(res, "servers", None) or []):
+            out.append({
+                "name": getattr(s, "name", ""),
+                "enabled": bool(getattr(s, "enabled", True)),
+                "source": getattr(getattr(s, "source", None), "value", None) or "",
+                "type": getattr(getattr(s, "type", None), "value", None) or "",
+            })
+        return out
 
     async def set_mcp_servers(self, servers):
         self.mcp_servers = servers or None

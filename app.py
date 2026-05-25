@@ -342,6 +342,14 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def discover_mcp(self):
+        if not self.backend:
+            return {"ok": True, "servers": []}
+        try:
+            return {"ok": True, "servers": self._run(self.backend.discover_mcp(), timeout=20)}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "servers": []}
+
     def get_mcp_status(self):
         if not self.backend:
             return {"ok": True, "status": {}, "disabled": []}

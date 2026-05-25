@@ -203,6 +203,8 @@ async function openMcp(){
   if(backendReady){
     try{ const m = await window.pywebview.api.get_mcp(); mcpServers = (m && m.servers) || {}; }catch(e){ mcpServers = {}; }
     try{ const st = await window.pywebview.api.get_mcp_status(); mcpStatus = (st && st.status) || {}; mcpDisabled = (st && st.disabled) || []; }catch(e){}
+    renderMcpList();   // show app servers immediately
+    try{ const d = await window.pywebview.api.discover_mcp(); mcpDiscovered = (d && d.servers) || []; }catch(e){ mcpDiscovered = []; }
   }
   renderMcpList();
 }
@@ -244,7 +246,7 @@ async function saveMcp(){
   renderMcpList(); flashBanner('MCP servers saved');
 }
 // ===== MCP server manager =====
-let mcpServers = {}, mcpStatus = {}, mcpDisabled = [];
+let mcpServers = {}, mcpStatus = {}, mcpDisabled = [], mcpDiscovered = [];
 function parseKV(text, sep){
   const o = {};
   String(text||'').split('\n').forEach(l=>{ const i=l.indexOf(sep); if(i>0){ const k=l.slice(0,i).trim(); if(k) o[k]=l.slice(i+1).trim(); } });
@@ -253,8 +255,11 @@ function parseKV(text, sep){
 function renderMcpList(){
   const host = document.getElementById('mcpList'); if(!host) return;
   const names = Object.keys(mcpServers);
-  // Servers that loaded via discovery (~/.copilot / .github) but aren't app-defined.
-  const discovered = Object.keys(mcpStatus).filter(n => !(n in mcpServers));
+  // Discovered servers (.github / ~/.copilot / plugins / builtin) that aren't app-defined,
+  // from mcp.discover(); merge in any names only seen via runtime status events.
+  const discNames = (mcpDiscovered || []).map(d=>d.name);
+  for(const n of Object.keys(mcpStatus)){ if(!(n in mcpServers) && discNames.indexOf(n)===-1){ discNames.push(n); mcpDiscovered.push({name:n, enabled:true, source:'', type:''}); } }
+  const discovered = (mcpDiscovered || []).filter(d => !(d.name in mcpServers));
   const connected = Object.keys(mcpStatus).filter(n=>(mcpStatus[n]||{}).status==='connected').length;
   const total = names.length + discovered.length;
   const hb = document.getElementById('mcpHealth'); if(hb) hb.textContent = total ? `(${connected}/${total} connected)` : '';
@@ -277,18 +282,22 @@ function renderMcpList(){
         <button class="seg" onclick="mcpRemove('${escapeJsArg(n)}')">Remove</button>
       </span></div>`;
   }).join('');
-  // Read-only rows for discovered servers (managed in ~/.copilot, not editable here).
-  const discRows = discovered.map(n=>{
-    const st = (mcpStatus[n]||{}).status || 'pending';
-    const err = (mcpStatus[n]||{}).error || '';
+  // Read-only rows for discovered servers (managed in their config, not editable here).
+  const srcLabel = {user:'~/.copilot', workspace:'.github', plugin:'plugin', builtin:'builtin'};
+  const discRows = discovered.map(d=>{
+    const n = d.name;
+    const live = mcpStatus[n] || {};
+    const st = !d.enabled ? 'disabled' : (live.status || 'pending');
+    const err = live.error || '';
+    const meta = (srcLabel[d.source] || d.source || 'discovered') + (d.type ? ' · ' + d.type : '');
     return `<div class="mcp-row">
       <span class="mcp-name">${escapeHtml(n)}</span>
       <span class="mcp-badge ${escapeHtml(st)}" title="${escapeAttr(err)}">${escapeHtml(st)}</span>
-      <span class="mcp-meta">discovered · ~/.copilot</span>
+      <span class="mcp-meta" title="${escapeAttr(meta)}">${escapeHtml(meta)}</span>
       <span class="mcp-spacer"></span>
       <span class="mcp-actions"><span class="mcp-readonly">read-only</span></span></div>`;
   }).join('');
-  host.innerHTML = ownRows + (discRows ? '<div class="mcp-sub">Discovered (managed in ~/.copilot)</div>' + discRows : '');
+  host.innerHTML = ownRows + (discRows ? '<div class="mcp-sub">Discovered (from .github / ~/.copilot)</div>' + discRows : '');
 }
 function mcpAddNew(){ mcpRenderForm(''); }
 function mcpEdit(name){ mcpRenderForm(name); }
