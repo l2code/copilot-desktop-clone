@@ -666,9 +666,21 @@ def main():
         min_size=(820, 600),
     )
     api.window = window
-    # gui=None lets pywebview pick the platform's webview (EdgeWebView2 on Win11).
+    # Persist the WebView2 profile/cache in a stable folder instead of pywebview's
+    # default private (throwaway) mode. Without this, WebView2 re-initializes its
+    # profile every launch, which causes the slow + highly variable cold start
+    # (sometimes 3s, sometimes 20s+) before the page/spinner can render.
+    wv_data = os.path.join(HISTORY_DIR, "webview2")
+    try:
+        os.makedirs(wv_data, exist_ok=True)
+    except Exception:
+        pass
     _dbg("main: webview.start() — gap to 'start(): ...' = WebView2 init + page load")
-    webview.start()
+    # gui=None lets pywebview pick the platform's webview (EdgeWebView2 on Win11).
+    try:
+        webview.start(private_mode=False, storage_path=wv_data)
+    except TypeError:
+        webview.start()   # older pywebview without these kwargs
 
 
 if __name__ == "__main__":
