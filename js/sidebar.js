@@ -32,16 +32,9 @@ function renderSidebar(){
   if(!list) return;
   const searchEl = document.getElementById('chatSearch');
   const q = (searchEl ? searchEl.value : '').toLowerCase();
-  let items = q ? conversations.filter(c=>(c.title||'').toLowerCase().includes(q)) : conversations.slice();
-  // Surface the active chat right away -- even before it has been saved -- so a
-  // brand-new chat (and a freshly picked folder) shows up in the sidebar
-  // immediately, grouped under the same folder shown beneath the composer.
-  if(!q && currentConvId && !items.some(c=>c.id===currentConvId)){
-    const firstUser = currentMessages.find(m=>m.role==='user');
-    items.unshift({id:currentConvId,
-                   title:(firstUser ? firstUser.content.slice(0,60) : 'New chat'),
-                   updated: Date.now()/1000, cwd: currentCwd, _draft:true});
-  }
+  const items = q ? conversations.filter(c=>(c.title||'').toLowerCase().includes(q)) : conversations.slice();
+  // No placeholder draft: a chat only appears once it has a real exchange (saved
+  // after the assistant replies), so navigating away never drops a phantom group.
   if(!items.length){ list.innerHTML = '<div class="sb-empty">'+(q?'No matches':'No conversations yet')+'</div>'; return; }
   // group by working folder (active folder first, then by recency)
   const groups = [], idx = {};

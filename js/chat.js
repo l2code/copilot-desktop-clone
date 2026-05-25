@@ -94,7 +94,6 @@ function sendMessage(){
   const attNames = atts.map(a=>a.displayName);
   addUserMessage(text, false, attNames);
   currentMessages.push({role:'user', content:text, attachments:attNames});
-  persistCurrent();   // save now so the chat appears in the sidebar even if the reply errors
   input.value=''; autoGrow(input);
   pendingAttachments = []; renderAttachments(); toggleSend();
 
@@ -134,8 +133,7 @@ function stopStreaming(){
     const ans = curTarget.querySelector('.ans');
     const out = raw.trim() ? renderMarkdown(raw) : '<p class="set-val">(stopped)</p>';
     if(ans) ans.innerHTML = out; else curTarget.innerHTML = out;
-    if(raw.trim()){ addMessageActions(curTarget, raw); currentMessages.push({role:'assistant', content:raw}); }
-    persistCurrent();
+    if(raw.trim()){ addMessageActions(curTarget, raw); currentMessages.push({role:'assistant', content:raw}); persistCurrent(); }
     curTarget = null; curBuf = "";
   }
   setStreaming(false);
@@ -209,8 +207,9 @@ function onCopilotDone(){
   if(think){ think.open=false; const s=think.querySelector('summary'); if(s) s.textContent='Thought for a moment'; }
   addMessageActions(curTarget, raw);
   curTarget = null; curBuf = "";
-  if(raw.trim()) currentMessages.push({role:'assistant', content:raw});
-  persistCurrent();
+  // Save only once we actually have a reply from the LLM -- empty/errored turns
+  // never clutter the sidebar.
+  if(raw.trim()){ currentMessages.push({role:'assistant', content:raw}); persistCurrent(); }
   if(typeof refreshUsage === 'function') refreshUsage();   // usage updates after each reply
   scrollDown();
 }
