@@ -69,6 +69,7 @@ async function handleBackendResult(res){
     await loadCommands();
     newChat();
     refreshUsage();
+    if(typeof checkToolBudget === 'function') checkToolBudget();   // pre-count tools vs the 128 cap
     if(typeof refreshWorkbench === 'function' && typeof wbTab !== 'undefined' && wbTab === 'gitlab'){
       refreshWorkbench();
     }

@@ -205,6 +205,7 @@ async function openMcp(){
     try{ const st = await window.pywebview.api.get_mcp_status(); mcpStatus = (st && st.status) || {}; mcpDisabled = (st && st.disabled) || []; }catch(e){}
     renderMcpList();   // show app servers immediately
     try{ const d = await window.pywebview.api.discover_mcp(); mcpDiscovered = (d && d.servers) || []; }catch(e){ mcpDiscovered = []; }
+    await fetchTools();   // pre-use tool list + count (no message sent)
   }
   renderMcpList();
 }
@@ -246,7 +247,30 @@ async function saveMcp(){
   renderMcpList(); flashBanner('MCP servers saved');
 }
 // ===== MCP server manager =====
-let mcpServers = {}, mcpStatus = {}, mcpDisabled = [], mcpDiscovered = [];
+let mcpServers = {}, mcpStatus = {}, mcpDisabled = [], mcpDiscovered = [], mcpTools = [];
+const TOOL_CAP = 128;   // Copilot API max tools per request
+// Pre-use tool list (built-in + namespaced MCP) via tools.list — no message sent.
+async function fetchTools(){
+  if(!backendReady){ mcpTools = []; return; }
+  try{ const r = await window.pywebview.api.list_tools(); mcpTools = (r && r.tools) || []; }
+  catch(e){ mcpTools = []; }
+}
+// Group tools by MCP server namespace ('' = built-in).
+function toolsByServer(){
+  const m = {};
+  (mcpTools||[]).forEach(t=>{ const k = t.server || '(built-in)'; (m[k] = m[k] || []).push(t.name); });
+  return m;
+}
+// Connect-time + post-toggle guard: warn before a send hits the 128-tool cap.
+async function checkToolBudget(){
+  await fetchTools();
+  const n = (mcpTools||[]).length;
+  if(n > TOOL_CAP){
+    showBanner('err', n + ' tools loaded — over Copilot’s ' + TOOL_CAP + '-tool limit. Disable MCP servers in Settings → MCP, or requests may fail.');
+  } else if(n >= TOOL_CAP - 18){
+    flashBanner(n + ' tools loaded (limit ' + TOOL_CAP + ').', 'warn');
+  }
+}
 function parseKV(text, sep){
   const o = {};
   String(text||'').split('\n').forEach(l=>{ const i=l.indexOf(sep); if(i>0){ const k=l.slice(0,i).trim(); if(k) o[k]=l.slice(i+1).trim(); } });
@@ -263,18 +287,29 @@ function renderMcpList(){
   const connected = Object.keys(mcpStatus).filter(n=>(mcpStatus[n]||{}).status==='connected').length;
   const total = names.length + discovered.length;
   const hb = document.getElementById('mcpHealth'); if(hb) hb.textContent = total ? `(${connected}/${total} connected)` : '';
-  if(!total){ host.innerHTML = '<div class="mcp-empty">No MCP servers configured or discovered.</div>'; return; }
+  // Tool budget (pre-counted via tools.list): show total vs the 128 cap, colored.
+  const byServer = toolsByServer();
+  const toolTotal = (mcpTools||[]).length;
+  const toolHint = (n) => { const ts = byServer[n]; return ts ? ' · ' + ts.length + ' tool' + (ts.length===1?'':'s') : ''; };
+  const toolNames = (n) => { const ts = byServer[n]; return ts ? ts.join(', ') : ''; };
+  let budget = '';
+  if(toolTotal){
+    const cls = toolTotal > TOOL_CAP ? 'full' : (toolTotal >= TOOL_CAP - 18 ? 'warn' : '');
+    const note = toolTotal > TOOL_CAP ? ' — over the limit; disable some servers' : (toolTotal >= TOOL_CAP - 18 ? ' — approaching the limit' : '');
+    budget = `<div class="mcp-budget ${cls}">Tools loaded: ${toolTotal} / ${TOOL_CAP}${escapeHtml(note)}</div>`;
+  }
+  if(!total){ host.innerHTML = budget + '<div class="mcp-empty">No MCP servers configured or discovered.</div>'; return; }
   const ownRows = names.map(n=>{
     const cfg = mcpServers[n] || {};
     const t = cfg.url ? 'http' : 'stdio';
     const disabled = mcpDisabled.indexOf(n) !== -1;
     const st = disabled ? 'disabled' : ((mcpStatus[n]||{}).status || 'pending');
     const err = (mcpStatus[n]||{}).error || '';
-    const meta = t==='http' ? (cfg.url||'') : ((cfg.command||'') + ' ' + ((cfg.args||[]).join(' ')));
+    const meta = (t==='http' ? (cfg.url||'') : ((cfg.command||'') + ' ' + ((cfg.args||[]).join(' ')))) + toolHint(n);
     return `<div class="mcp-row">
       <span class="mcp-name">${escapeHtml(n)}</span>
       <span class="mcp-badge ${escapeHtml(st)}" title="${escapeAttr(err)}">${escapeHtml(st)}</span>
-      <span class="mcp-meta" title="${escapeAttr(meta)}">${escapeHtml(meta)}</span>
+      <span class="mcp-meta" title="${escapeAttr(toolNames(n) || meta)}">${escapeHtml(meta)}</span>
       <span class="mcp-spacer"></span>
       <span class="mcp-actions">
         <button class="seg" onclick="mcpToggle('${escapeJsArg(n)}', ${disabled})">${disabled?'Enable':'Disable'}</button>
@@ -289,17 +324,17 @@ function renderMcpList(){
     const live = mcpStatus[n] || {};
     const st = !d.enabled ? 'disabled' : (live.status || 'pending');
     const err = live.error || '';
-    const meta = (srcLabel[d.source] || d.source || 'discovered') + (d.type ? ' · ' + d.type : '');
+    const meta = (srcLabel[d.source] || d.source || 'discovered') + (d.type ? ' · ' + d.type : '') + toolHint(n);
     return `<div class="mcp-row">
       <span class="mcp-name">${escapeHtml(n)}</span>
       <span class="mcp-badge ${escapeHtml(st)}" title="${escapeAttr(err)}">${escapeHtml(st)}</span>
-      <span class="mcp-meta" title="${escapeAttr(meta)}">${escapeHtml(meta)}</span>
+      <span class="mcp-meta" title="${escapeAttr(toolNames(n) || meta)}">${escapeHtml(meta)}</span>
       <span class="mcp-spacer"></span>
       <span class="mcp-actions">
         <button class="seg" onclick="mcpDiscToggle('${escapeJsArg(n)}', ${d.enabled})">${d.enabled?'Disable':'Enable'}</button>
       </span></div>`;
   }).join('');
-  host.innerHTML = ownRows + (discRows ? '<div class="mcp-sub">Discovered (from .github / ~/.copilot)</div>' + discRows : '');
+  host.innerHTML = budget + ownRows + (discRows ? '<div class="mcp-sub">Discovered (from .github / ~/.copilot)</div>' + discRows : '');
 }
 function mcpAddNew(){ mcpRenderForm(''); }
 function mcpEdit(name){ mcpRenderForm(name); }
@@ -373,6 +408,7 @@ async function mcpDiscToggle(name, currentlyEnabled){
   const want = !currentlyEnabled;
   try{ await window.pywebview.api.set_discovered_mcp_enabled(name, want); }catch(e){}
   const d = (mcpDiscovered||[]).find(x=>x.name===name); if(d) d.enabled = want;
+  await fetchTools();   // tool count changed (session recreated)
   renderMcpList();
   flashBanner((want?'Enabled ':'Disabled ') + name);
   newChat();   // session was recreated to apply the change
@@ -380,11 +416,13 @@ async function mcpDiscToggle(name, currentlyEnabled){
 async function mcpToggle(name, enable){
   if(backendReady){ try{ await window.pywebview.api.set_mcp_enabled(name, enable); }catch(e){} }
   if(enable) mcpDisabled = mcpDisabled.filter(x=>x!==name); else if(mcpDisabled.indexOf(name)===-1) mcpDisabled.push(name);
+  await fetchTools();
   renderMcpList();
 }
 async function mcpRemove(name){
   delete mcpServers[name];
   if(backendReady){ try{ await window.pywebview.api.set_mcp(mcpServers); }catch(e){} }
+  await fetchTools();
   renderMcpList();
 }
 function toggleMcpJson(){

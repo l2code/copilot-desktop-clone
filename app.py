@@ -540,6 +540,17 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def list_tools(self):
+        """All tools available to the agent (built-in + namespaced MCP) for the
+        pre-use list and the 128-tool pre-count."""
+        if not self.backend:
+            return {"ok": True, "tools": [], "count": 0, "cap": 128}
+        try:
+            tools = self._run(self.backend.list_tools(), timeout=20)
+            return {"ok": True, "tools": tools, "count": len(tools), "cap": 128}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "tools": [], "count": 0, "cap": 128}
+
     def discover_mcp(self):
         if not self.backend:
             return {"ok": True, "servers": []}

@@ -29,7 +29,8 @@ def _dbg(*parts):
 from copilot.generated.session_events import SessionEventType
 from copilot.generated.rpc import (ModeSetRequest, SessionMode, SessionsForkRequest,
                                    MCPDiscoverRequest, MCPConfigEnableRequest,
-                                   MCPConfigDisableRequest)
+                                   MCPConfigDisableRequest, ToolsListRequest,
+                                   HistoryTruncateRequest)
 from copilot.session import PermissionRequestResult
 
 
@@ -464,6 +465,28 @@ class CopilotBackend:
         if not self.client:
             return []
         return await self.client.list_models()
+
+    async def list_tools(self):
+        """Enumerate every tool available to the agent (built-in + namespaced MCP
+        tools like 'playwright/navigate') via tools.list -- no message needed.
+        Lets the UI show per-server tools and pre-count against the 128-tool cap.
+        Returns JSON-safe dicts; 'server' is the MCP namespace ('' = built-in)."""
+        if not self.client:
+            return []
+        try:
+            res = await self.client.rpc.tools.list(ToolsListRequest(model=self.model))
+        except Exception:
+            return []
+        out = []
+        for t in (getattr(res, "tools", None) or []):
+            ns = getattr(t, "namespaced_name", None) or ""
+            out.append({
+                "name": getattr(t, "name", ""),
+                "namespaced": ns,
+                "server": ns.split("/")[0] if "/" in ns else "",
+                "description": (getattr(t, "description", "") or "")[:200],
+            })
+        return out
 
     async def get_quota(self):
         """Per-category Copilot usage/quota (chat, completions, premium requests),
