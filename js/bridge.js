@@ -10,8 +10,20 @@ let backendReady = false;
 let curTarget = null;   // assistant <div.m-content> currently streaming
 let curBuf = "";        // accumulated raw markdown for the current reply
 let backendStartTimer = null;
+let pywebviewReadySeen = false;
 
-window.addEventListener('pywebviewready', initBackend);
+window.addEventListener('pywebviewready', ()=>{
+  pywebviewReadySeen = true;
+  initBackend();
+});
+
+setTimeout(()=>{
+  if(pywebviewReadySeen) return;
+  showConnecting(true, 'Starting WebView bridge');
+  try{
+    showBanner('warn', 'The WebView bridge is still starting. Close other Copilot Desktop windows or use run-copilot-mode.bat for an isolated profile.');
+  }catch(e){}
+}, 25000);
 
 async function initBackend(){
   setStatus('warn');

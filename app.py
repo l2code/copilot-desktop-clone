@@ -1616,7 +1616,7 @@ def main():
     # cache-busted, and a persistent profile avoids private-profile startup hangs
     # seen on some managed desktops. COPILOT_WEBVIEW_PRIVATE=1 remains available if
     # a user's WebView2 profile is corrupt.
-    wv_data = os.path.join(HISTORY_DIR, "webview2")
+    wv_data = os.environ.get("COPILOT_WEBVIEW_STORAGE") or os.path.join(HISTORY_DIR, "webview2")
     use_private_webview = _env_flag("COPILOT_WEBVIEW_PRIVATE", False)
     persist_webview = _env_flag("COPILOT_WEBVIEW_PERSIST", os.name == "nt")
     if use_private_webview:
