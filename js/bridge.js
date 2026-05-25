@@ -15,17 +15,28 @@ window.addEventListener('pywebviewready', initBackend);
 
 async function initBackend(){
   setStatus('warn');
+  let startup = {};
+  try{ startup = await window.pywebview.api.get_startup_options(); }catch(e){ startup = {}; }
   // Show saved conversations immediately (history file; independent of the session).
   try{ conversations = (await window.pywebview.api.list_conversations()) || []; }catch(e){ conversations = []; }
   renderSidebar();
+  await loadCommands();
+  if(startup && startup.skip_copilot_start){
+    showConnecting(false);
+    setStatus('warn');
+    setAccount(null);
+    showBanner('warn', 'GitHub Copilot startup is skipped. Workspace and GitLab tools are available.');
+    return;
+  }
   showConnecting(true, 'Connecting to GitHub Copilot');   // spinner + animated dots while start() runs
   try{
     const res = await window.pywebview.api.start();
     if(res && res.starting){
       backendStartTimer = setTimeout(()=>{
         if(!backendReady){
-          showConnecting(true, 'Still connecting to GitHub Copilot');
-          showBanner('warn', 'Copilot is still connecting. The app remains usable while auth, proxy, and model discovery finish.');
+          showConnecting(false);
+          setStatus('warn');
+          showBanner('warn', 'Copilot is still connecting in the background. Workspace and GitLab tools are available.');
         }
       }, 45000);
     } else if(res && res.ready){

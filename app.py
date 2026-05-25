@@ -106,6 +106,13 @@ def _norm_env_path(path: str | None) -> str | None:
     return os.path.abspath(os.path.expandvars(os.path.expanduser(path)))
 
 
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
 def _load_env_file() -> None:
     """Load a .env into the process environment so the Copilot SDK subprocess
     inherits things like corporate proxy settings (HTTPS_PROXY / HTTP_PROXY /
@@ -445,6 +452,15 @@ class Api:
             self._start_inflight = True
         threading.Thread(target=self._start_worker, args=(github_token,), daemon=True).start()
         return {"ok": True, "starting": True}
+
+    def get_startup_options(self):
+        return {
+            "ok": True,
+            "skip_copilot_start": _env_flag("COPILOT_SKIP_START"),
+            "webview_gui": os.environ.get("COPILOT_WEBVIEW_GUI") or "",
+            "webview_private": _env_flag("COPILOT_WEBVIEW_PRIVATE"),
+            "webview_persist": _env_flag("COPILOT_WEBVIEW_PERSIST", os.name == "nt"),
+        }
 
     def send(self, prompt: str, attachments=None, session_id=None):
         if not self.backend:
@@ -1493,6 +1509,12 @@ def main():
         i = sys.argv.index("--host")
         if i + 1 < len(sys.argv):
             os.environ["COPILOT_HOST"] = sys.argv[i + 1]
+    if "--no-copilot" in sys.argv:
+        os.environ["COPILOT_SKIP_START"] = "1"
+    if "--webview-private" in sys.argv:
+        os.environ["COPILOT_WEBVIEW_PRIVATE"] = "1"
+    if "--webview-persist" in sys.argv:
+        os.environ["COPILOT_WEBVIEW_PERSIST"] = "1"
     # env/proxy loading moved into Api.start() so a slow OneDrive .env read happens
     # behind the spinner rather than delaying the window from appearing.
     _dbg("main: creating window")          # gap vs the very first line below = Python import time
@@ -1506,14 +1528,15 @@ def main():
         min_size=(820, 600),
     )
     api.window = window
-    # On Windows, prefer a private WebView2 profile by default. Copilot auth lives
-    # in the SDK subprocess, not in browser cookies, and private mode avoids stale
-    # WebView2 profile/cache hangs where the page renders but pywebviewready never
-    # fires. Set COPILOT_WEBVIEW_PERSIST=1 if you specifically want a persistent
-    # profile for debugging.
+    # On Windows, use a persistent WebView2 profile by default. The asset URLs are
+    # cache-busted, and a persistent profile avoids private-profile startup hangs
+    # seen on some managed desktops. COPILOT_WEBVIEW_PRIVATE=1 remains available if
+    # a user's WebView2 profile is corrupt.
     wv_data = os.path.join(HISTORY_DIR, "webview2")
-    persist_webview = os.environ.get("COPILOT_WEBVIEW_PERSIST", "").lower() in ("1", "true", "yes")
-    use_private_webview = (os.name == "nt" and not persist_webview)
+    use_private_webview = _env_flag("COPILOT_WEBVIEW_PRIVATE", False)
+    persist_webview = _env_flag("COPILOT_WEBVIEW_PERSIST", os.name == "nt")
+    if use_private_webview:
+        persist_webview = False
     if not use_private_webview:
         try:
             os.makedirs(wv_data, exist_ok=True)
@@ -1521,11 +1544,14 @@ def main():
             pass
     _dbg("main: webview.start() — gap to 'api.list_conversations' = WebView init + bridge injection")
     # gui=None lets pywebview pick the platform's webview (EdgeWebView2 on Win11).
+    gui = os.environ.get("COPILOT_WEBVIEW_GUI") or None
+    debug = _env_flag("COPILOT_WEBVIEW_DEBUG")
+    http_server = _env_flag("COPILOT_WEBVIEW_HTTP", os.name == "nt")
     try:
         if use_private_webview:
-            webview.start(private_mode=True)
+            webview.start(gui=gui, debug=debug, http_server=http_server, private_mode=True)
         else:
-            webview.start(private_mode=False, storage_path=wv_data)
+            webview.start(gui=gui, debug=debug, http_server=http_server, private_mode=False, storage_path=wv_data)
     except TypeError:
         webview.start()   # older pywebview without these kwargs
 
