@@ -16,9 +16,10 @@ so there is **no compiler and no admin install required**.
   messages, activity, GitHub context, reviews, workflows, and attachments.
 - `project_service.py`, `workspace_service.py`, `session_manager.py`,
   `activity.py`, `git_service.py`, `github_service.py`, `file_service.py`,
-  `workflow_service.py`, `automation_service.py`, `settings_service.py` —
-  backend services that move the app toward a Copilot App-style
-  project/workspace/session model while preserving the current chat UI.
+  `gitlab_service.py`, `workflow_service.py`, `automation_service.py`,
+  `settings_service.py`, `troubleshooting_service.py` — backend services that
+  move the app toward a Copilot App-style project/workspace/session model while
+  preserving the current chat UI.
 - `js/workbench.js` — the right-side workspace panel for Changes, Files,
   Activity, GitHub context, Workflows, and Terminal controls.
 - `requirements.txt` — Python dependencies.
@@ -155,6 +156,10 @@ Copilot SDK subprocess) uses standard proxy environment variables —
   temporary app-data folder.
 - The workspace workbench uses Git from `PATH`. GitHub panels use `GITHUB_TOKEN`,
   `GH_TOKEN`, or `gh auth token` and degrade gracefully when unauthenticated.
+- GitLab backlog panels use `GITLAB_TOKEN`, `GL_TOKEN`, or
+  `GITLAB_PRIVATE_TOKEN`. Set `GITLAB_URL` for self-managed GitLab, and
+  optionally `GITLAB_PROJECT_ID` / `GITLAB_PROJECT_PATH` or
+  `GITLAB_GROUP_ID` / `GITLAB_GROUP_PATH` for default backlog targets.
 - To ship as a single `.exe`, run PyInstaller against `app.py` — still no admin,
   still no compiler toolchain needed.
 - Model list is pulled live from `client.list_models()`; the picker in the top

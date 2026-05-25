@@ -69,6 +69,32 @@ def parse_github_remote_url(url: str | None) -> tuple[str | None, str | None]:
     return None, None
 
 
+def parse_gitlab_remote_url(url: str | None, host: str = "gitlab.com") -> str | None:
+    """Return a GitLab project full path from HTTPS/SSH remotes.
+
+    Supports GitLab.com and self-managed hosts by passing the host name from the
+    configured GitLab URL.
+    """
+    if not url:
+        return None
+    value = url.strip()
+    host_pat = re.escape(host.lower())
+    patterns = [
+        rf"^https://{host_pat}/(.+?)(?:\.git)?/?$",
+        rf"^http://{host_pat}/(.+?)(?:\.git)?/?$",
+        rf"^git@{host_pat}:(.+?)(?:\.git)?$",
+        rf"^ssh://git@{host_pat}/(.+?)(?:\.git)?/?$",
+    ]
+    lower = value.lower()
+    for pat in patterns:
+        m = re.match(pat, lower, re.IGNORECASE)
+        if m:
+            original = re.match(pat, value, re.IGNORECASE)
+            project_path = (original or m).group(1).strip("/")
+            return project_path[:-4] if project_path.endswith(".git") else project_path
+    return None
+
+
 def get_remote_url(path: str, remote: str = "origin") -> str | None:
     if not is_git_repo(path):
         return None

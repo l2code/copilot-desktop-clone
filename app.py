@@ -69,12 +69,14 @@ from activity import ActivityLog
 from automation_service import AutomationService
 from file_service import FileService
 from github_service import GitHubService
+from gitlab_service import GitLabService
 import git_service
 from project_service import ProjectService
 from session_manager import SessionManager
 from settings_service import SettingsService
 from storage import Storage
 from terminal import Terminal
+from troubleshooting_service import TroubleshootingService
 from workflow_service import WorkflowService
 from workspace_service import WorkspaceService
 # NOTE: copilot_backend (which imports the heavy Copilot SDK) is imported lazily
@@ -209,6 +211,8 @@ class Api:
         self.settings = SettingsService(self.storage)
         self.files = FileService()
         self.github = GitHubService()
+        self.gitlab = GitLabService()
+        self.troubleshooting = TroubleshootingService(self.storage)
         self.automations = AutomationService(self.storage)
         self.workflows = WorkflowService(self.storage, self.activity)
         self.active_project_id: str | None = None
@@ -724,6 +728,19 @@ class Api:
             raise ValueError("Project is not connected to a GitHub repository")
         return project, owner, repo
 
+    def _gitlab_project_target(self, target=None, project_id=None):
+        if target:
+            return str(target)
+        env_target = os.environ.get("GITLAB_PROJECT_ID") or os.environ.get("GITLAB_PROJECT_PATH")
+        if env_target:
+            return env_target
+        project = self._project_for_api(project_id)
+        remote = git_service.get_remote_url(project["main_repo_path"])
+        parsed = git_service.parse_gitlab_remote_url(remote, self.gitlab.host)
+        if parsed:
+            return parsed
+        raise ValueError("Set a GitLab project path/id or use a GitLab remote.")
+
     def get_changed_files(self, workspace_id=None):
         try:
             workspace = self._workspace_for_api(workspace_id)
@@ -985,6 +1002,101 @@ class Api:
             return {"ok": True, "session": session, "workspace": workspace}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+    def get_gitlab_auth_status(self):
+        return self.gitlab.auth_status()
+
+    def get_gitlab_project(self, target=None):
+        try:
+            target = self._gitlab_project_target(target)
+            res = self.gitlab.get_project(target)
+            return {"ok": res.get("ok"), "project_target": target, **res}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def list_gitlab_backlog(self, target=None, scope="project", state="opened", labels=None, search=None):
+        try:
+            if scope == "group":
+                group = target or os.environ.get("GITLAB_GROUP_ID") or os.environ.get("GITLAB_GROUP_PATH")
+                if not group:
+                    raise ValueError("GitLab group path/id is required")
+                res = self.gitlab.list_group_issues(group, state=state or "opened", labels=labels, search=search)
+                return {"ok": res.get("ok"), "scope": "group", "target": group, **res}
+            project = self._gitlab_project_target(target)
+            res = self.gitlab.list_project_issues(project, state=state or "opened", labels=labels, search=search)
+            return {"ok": res.get("ok"), "scope": "project", "target": project, **res}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "issues": []}
+
+    def create_gitlab_issue(self, target=None, title="", description="", labels=None):
+        try:
+            project = self._gitlab_project_target(target)
+            res = self.gitlab.create_issue(project, title, description, labels)
+            if res.get("ok"):
+                self.activity.add("gitlab", "Created GitLab issue", title, metadata={"target": project})
+            return {"ok": res.get("ok"), "target": project, **res}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def update_gitlab_issue(self, target=None, issue_iid=None, patch=None):
+        try:
+            project = self._gitlab_project_target(target)
+            res = self.gitlab.update_issue(project, int(issue_iid), patch or {})
+            if res.get("ok"):
+                self.activity.add("gitlab", "Updated GitLab issue", f"#{issue_iid}", metadata={"target": project, "patch": patch or {}})
+            return {"ok": res.get("ok"), "target": project, **res}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def create_gitlab_issue_note(self, target=None, issue_iid=None, body=""):
+        try:
+            project = self._gitlab_project_target(target)
+            res = self.gitlab.create_issue_note(project, int(issue_iid), body)
+            return {"ok": res.get("ok"), "target": project, **res}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def list_gitlab_epics(self, group=None, state="opened"):
+        try:
+            group = group or os.environ.get("GITLAB_GROUP_ID") or os.environ.get("GITLAB_GROUP_PATH")
+            if not group:
+                raise ValueError("GitLab group path/id is required for epics")
+            res = self.gitlab.list_group_epics(group, state=state or "opened")
+            return {"ok": res.get("ok"), "group": group, **res}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "epics": []}
+
+    def create_gitlab_epic(self, group=None, title="", description="", labels=None):
+        try:
+            group = group or os.environ.get("GITLAB_GROUP_ID") or os.environ.get("GITLAB_GROUP_PATH")
+            if not group:
+                raise ValueError("GitLab group path/id is required for epics")
+            res = self.gitlab.create_group_epic(group, title, description, labels)
+            return {"ok": res.get("ok"), "group": group, **res}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def update_gitlab_epic(self, group=None, epic_iid=None, patch=None):
+        try:
+            group = group or os.environ.get("GITLAB_GROUP_ID") or os.environ.get("GITLAB_GROUP_PATH")
+            if not group:
+                raise ValueError("GitLab group path/id is required for epics")
+            res = self.gitlab.update_group_epic(group, int(epic_iid), patch or {})
+            return {"ok": res.get("ok"), "group": group, **res}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_troubleshooting_summary(self):
+        return self.troubleshooting.summary()
+
+    def list_app_logs(self):
+        return self.troubleshooting.list_logs()
+
+    def read_app_log(self, name, max_bytes=200000):
+        return self.troubleshooting.read_log(name, max_bytes)
+
+    def query_app_db(self, sql, limit=100):
+        return self.troubleshooting.query_app_db(sql, limit)
 
     def list_workflows(self, project_id=None):
         try:

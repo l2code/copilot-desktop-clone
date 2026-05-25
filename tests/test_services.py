@@ -5,7 +5,7 @@ import unittest
 
 from activity import ActivityLog
 from file_service import FileService
-from git_service import parse_github_remote_url, parse_porcelain_v2_z
+from git_service import parse_github_remote_url, parse_gitlab_remote_url, parse_porcelain_v2_z
 from project_service import ProjectService
 from session_manager import SessionManager
 from storage import Storage
@@ -73,6 +73,18 @@ class ServiceTests(unittest.TestCase):
         ]
         for url, expected in cases:
             self.assertEqual(parse_github_remote_url(url), expected)
+
+    def test_gitlab_remote_url_parser(self):
+        cases = [
+            ("https://gitlab.com/group/sub/repo.git", "group/sub/repo"),
+            ("git@gitlab.com:group/sub/repo.git", "group/sub/repo"),
+            ("ssh://git@gitlab.example.com/group/sub/repo.git", "group/sub/repo"),
+            ("https://example.com/group/sub/repo.git", None),
+        ]
+        self.assertEqual(parse_gitlab_remote_url(cases[0][0], "gitlab.com"), cases[0][1])
+        self.assertEqual(parse_gitlab_remote_url(cases[1][0], "gitlab.com"), cases[1][1])
+        self.assertEqual(parse_gitlab_remote_url(cases[2][0], "gitlab.example.com"), cases[2][1])
+        self.assertEqual(parse_gitlab_remote_url(cases[3][0], "gitlab.com"), cases[3][1])
 
     def test_porcelain_v2_parser(self):
         raw = "\0".join([
