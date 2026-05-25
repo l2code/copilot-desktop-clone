@@ -17,9 +17,10 @@ async function initBackend(){
   // Show saved conversations immediately (history file; independent of the session).
   try{ conversations = (await window.pywebview.api.list_conversations()) || []; }catch(e){ conversations = []; }
   renderSidebar();
-  showBanner('warn', 'Connecting to GitHub Copilot…');   // feedback while start() runs (can stall behind a proxy)
+  showConnecting(true, 'Connecting to GitHub Copilot…');   // animated spinner while start() runs
   try{
     const res = await window.pywebview.api.start();
+    showConnecting(false);
     if(res && res.ok){
       backendReady = true;
       setStatus('ok');
@@ -46,9 +47,17 @@ async function initBackend(){
       showBanner('err','Copilot not connected: ' + ((res&&res.error)||'unknown error') + '.');
     }
   }catch(e){
+    showConnecting(false);
     setStatus('err');
     showBanner('err','Could not reach the backend: ' + e);
   }
+}
+
+// Animated "Connecting…" overlay over the main area.
+function showConnecting(show, msg){
+  const o = document.getElementById('connectingOverlay'); if(!o) return;
+  if(msg){ const t = document.getElementById('connectingText'); if(t) t.textContent = msg; }
+  o.classList.toggle('show', !!show);
 }
 
 // connection status dot next to the plan name (lower-left)
