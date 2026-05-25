@@ -149,6 +149,7 @@ class ServiceTests(unittest.TestCase):
         settings = {
             "gitlab_url": "https://devcloud.ubs.net",
             "gitlab_token": "abc",
+            "gitlab_auth_type": "bearer",
             "gitlab_project": "170848",
             "gitlab_group": "350440",
         }
@@ -159,6 +160,7 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(status["base_url"], "https://devcloud.ubs.net")
             self.assertEqual(status["url_source"], "app settings")
             self.assertEqual(status["token_source"], "app settings")
+            self.assertEqual(status["auth_type"], "bearer")
             self.assertEqual(status["default_project"], "170848")
             self.assertEqual(status["default_group"], "350440")
 
@@ -167,14 +169,24 @@ class ServiceTests(unittest.TestCase):
         settings.update_gitlab_settings({
             "url": "https://devcloud.ubs.net",
             "token": "secret",
+            "auth_type": "both",
             "project": "170848",
             "group": "350440",
         })
         visible = settings.get_gitlab_settings()
 
         self.assertEqual(visible["url"], "https://devcloud.ubs.net")
+        self.assertEqual(visible["auth_type"], "both")
         self.assertTrue(visible["token_configured"])
         self.assertNotIn("token", visible)
+
+    def test_gitlab_html_error_is_summarized(self):
+        raw = "<!DOCTYPE HTML><HTML><HEAD><TITLE>UBS Login</TITLE></HEAD><BODY>very long</BODY></HTML>"
+        msg = GitLabService._format_non_json_response(raw, "https://devcloud.ubs.net/api/v4/user")
+
+        self.assertIn("GitLab API returned HTML instead of JSON", msg)
+        self.assertIn("UBS Login", msg)
+        self.assertNotIn("<!DOCTYPE", msg)
 
 
 if __name__ == "__main__":

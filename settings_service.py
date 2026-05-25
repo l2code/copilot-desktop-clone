@@ -14,6 +14,7 @@ class SettingsService:
         "auto_approve": "0",
         "gitlab_url": "",
         "gitlab_token": "",
+        "gitlab_auth_type": "private-token",
         "gitlab_project": "",
         "gitlab_group": "",
     }
@@ -37,6 +38,7 @@ class SettingsService:
         settings = self.get_settings()
         return {
             "url": settings.get("gitlab_url", ""),
+            "auth_type": settings.get("gitlab_auth_type", "private-token"),
             "project": settings.get("gitlab_project", ""),
             "group": settings.get("gitlab_group", ""),
             "token_configured": bool(settings.get("gitlab_token")),
@@ -46,12 +48,16 @@ class SettingsService:
         data = patch or {}
         mapping = {
             "url": "gitlab_url",
+            "auth_type": "gitlab_auth_type",
             "project": "gitlab_project",
             "group": "gitlab_group",
         }
         for public_key, setting_key in mapping.items():
             if public_key in data:
-                self.storage.set_setting(setting_key, str(data.get(public_key) or "").strip())
+                value = str(data.get(public_key) or "").strip()
+                if public_key == "auth_type" and value not in ("private-token", "bearer", "both"):
+                    value = "private-token"
+                self.storage.set_setting(setting_key, value)
         if data.get("clear_token"):
             self.storage.set_setting("gitlab_token", "")
         elif "token" in data and str(data.get("token") or "").strip():

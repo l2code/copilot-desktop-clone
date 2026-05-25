@@ -199,6 +199,7 @@ async function renderGitlabPanel(){
   const project = await wbCall('get_gitlab_project');
   const target = project && project.project_target ? project.project_target : '';
   const urlValue = settings.url || (env && env.url_source && env.url_source !== 'default' ? env.base_url : '');
+  const authType = settings.auth_type || (env && env.auth_type) || 'private-token';
   const projectValue = settings.project || (env && env.default_project) || target || '';
   const groupValue = settings.group || (env && env.default_group) || '';
   const tokenPlaceholder = settings.token_configured
@@ -210,7 +211,7 @@ async function renderGitlabPanel(){
       ? `Not authenticated: ${escapeHtml(auth.error)}`
       : `Not authenticated. Set a token below or with GITLAB_TOKEN, GITLAB_PERSONAL_ACCESS_TOKEN, GL_TOKEN, or GITLAB_PRIVATE_TOKEN.`);
   const envLine = env && env.ok
-    ? `GitLab URL: ${escapeHtml(env.base_url || '')} · Source: ${escapeHtml(env.url_source || 'default')} · Token: ${escapeHtml(env.token_source || 'not detected')}${env.default_project ? ' · Project: ' + escapeHtml(env.default_project) : ''}${env.default_group ? ' · Group: ' + escapeHtml(env.default_group) : ''}`
+    ? `GitLab API: ${escapeHtml(env.api_url || env.base_url || '')} · Source: ${escapeHtml(env.url_source || 'default')} · Auth: ${escapeHtml(env.auth_type || 'private-token')} · Token: ${escapeHtml(env.token_source || 'not detected')}${env.default_project ? ' · Project: ' + escapeHtml(env.default_project) : ''}${env.default_group ? ' · Group: ' + escapeHtml(env.default_group) : ''}`
     : '';
   const envFile = (env && env.env_file) || {};
   const envFileLine = envFile.loaded_path
@@ -236,9 +237,14 @@ async function renderGitlabPanel(){
   wbSet(`
     <div class="wb-section-title">GitLab connection</div>
     <div class="wb-config">
-      <label>URL<input id="wbGitlabUrl" class="wb-input" placeholder="https://gitlab.example.com" value="${escapeAttr(urlValue)}"></label>
+      <label>URL or API URL<input id="wbGitlabUrl" class="wb-input" placeholder="https://gitlab.example.com/api/v4" value="${escapeAttr(urlValue)}"></label>
       <label>Project<input id="wbGitlabDefaultProject" class="wb-input" placeholder="project id or group/project" value="${escapeAttr(projectValue)}"></label>
       <label>Group<input id="wbGitlabDefaultGroup" class="wb-input" placeholder="group id or path" value="${escapeAttr(groupValue)}"></label>
+      <label>Auth<select id="wbGitlabAuthType" class="wb-input">
+        <option value="private-token" ${authType === 'private-token' ? 'selected' : ''}>PRIVATE-TOKEN</option>
+        <option value="bearer" ${authType === 'bearer' ? 'selected' : ''}>Bearer</option>
+        <option value="both" ${authType === 'both' ? 'selected' : ''}>Both</option>
+      </select></label>
       <label>Token<input id="wbGitlabToken" class="wb-input" type="password" placeholder="${escapeAttr(tokenPlaceholder)}"></label>
       <div class="wb-actions">
         <button class="wb-primary" onclick="wbGitlabSaveSettings()">Save connection</button>
@@ -272,6 +278,7 @@ async function wbGitlabSaveSettings(){
   const token = ((document.getElementById('wbGitlabToken') || {}).value || '').trim();
   const patch = {
     url: ((document.getElementById('wbGitlabUrl') || {}).value || '').trim(),
+    auth_type: ((document.getElementById('wbGitlabAuthType') || {}).value || 'private-token').trim(),
     project: ((document.getElementById('wbGitlabDefaultProject') || {}).value || '').trim(),
     group: ((document.getElementById('wbGitlabDefaultGroup') || {}).value || '').trim(),
   };

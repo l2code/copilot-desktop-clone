@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from urllib.parse import quote, urlencode, urlparse
 import urllib.error
 import urllib.request
@@ -94,13 +95,29 @@ class GitLabService:
         return {
             "ok": True,
             "base_url": base_url,
+            "api_url": self.api_url,
             "host": urlparse(base_url).netloc or "gitlab.com",
             "url_source": url_source,
             "token_source": source,
+            "auth_type": self.auth_type(),
             "has_token": bool(token),
             "default_project": self.default_project(),
             "default_group": self.default_group(),
         }
+
+    @property
+    def api_url(self) -> str:
+        return f"{self.base_url}/api/v4"
+
+    def auth_type(self) -> str:
+        settings_type = str(self._settings().get("gitlab_auth_type") or "").strip().lower()
+        env_type = str(os.environ.get("GITLAB_AUTH_TYPE") or os.environ.get("GITLAB_TOKEN_AUTH") or "").strip().lower()
+        value = settings_type or env_type or "private-token"
+        if value in ("authorization", "oauth", "oauth-bearer"):
+            value = "bearer"
+        if value not in ("private-token", "bearer", "both"):
+            value = "private-token"
+        return value
 
     def auth_status(self) -> dict:
         token, source = self.discover_token()
@@ -136,8 +153,12 @@ class GitLabService:
         headers = {
             "Accept": "application/json",
             "User-Agent": "copilot-desktop-clone",
-            "PRIVATE-TOKEN": token,
         }
+        auth_type = self.auth_type()
+        if auth_type in ("private-token", "both"):
+            headers["PRIVATE-TOKEN"] = token
+        if auth_type in ("bearer", "both"):
+            headers["Authorization"] = f"Bearer {token}"
         if body is not None:
             data = json.dumps(body).encode("utf-8")
             headers["Content-Type"] = "application/json"
@@ -145,17 +166,38 @@ class GitLabService:
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 raw = resp.read().decode("utf-8")
-                return {"ok": True, "data": json.loads(raw) if raw else None}
+                try:
+                    return {"ok": True, "data": json.loads(raw) if raw else None}
+                except Exception:
+                    return {"ok": False, "status": getattr(resp, "status", None), "error": self._format_non_json_response(raw, getattr(resp, "url", ""))}
         except urllib.error.HTTPError as e:
             raw = e.read().decode("utf-8", errors="replace")
             try:
                 parsed = json.loads(raw)
                 raw = parsed.get("message") or parsed.get("error") or raw
             except Exception:
-                pass
+                raw = self._format_non_json_response(raw, getattr(e, "url", ""))
             return {"ok": False, "status": e.code, "error": raw}
         except Exception as e:
             return {"ok": False, "error": str(e)}
+
+    @staticmethod
+    def _format_non_json_response(raw: str, url: str = "") -> str:
+        text = raw or ""
+        if "<html" in text.lower() or "<!doctype html" in text.lower():
+            title = ""
+            match = re.search(r"<title[^>]*>(.*?)</title>", text, flags=re.I | re.S)
+            if match:
+                title = re.sub(r"\s+", " ", match.group(1)).strip()
+            hints = "GitLab API returned HTML instead of JSON"
+            if title:
+                hints += f" ({title})"
+            hints += ". This usually means the URL is an SSO/proxy/front-door page, or the token header type is not accepted. Try the exact GitLab API URL ending in /api/v4 and switch Auth to Bearer or Both."
+            if url:
+                hints += f" Response URL: {url}"
+            return hints[:900]
+        compact = re.sub(r"\s+", " ", text).strip()
+        return compact[:900] or "GitLab API returned an empty non-JSON response."
 
     @staticmethod
     def _project(value: str | int) -> str:
