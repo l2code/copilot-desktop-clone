@@ -333,6 +333,31 @@ class Api:
         path = res[0] if isinstance(res, (list, tuple)) else res
         return {"path": path}
 
+    def new_project(self, name=None):
+        """Create a fresh empty project folder under ~/CopilotProjects and switch to it."""
+        if not self.backend:
+            return {"ok": False, "error": "Backend not started"}
+        try:
+            base = os.path.join(os.path.expanduser("~"), "CopilotProjects")
+            os.makedirs(base, exist_ok=True)
+            safe = "".join(c for c in (name or "") if c.isalnum() or c in " -_").strip()
+            folder = safe or ("Project-" + time.strftime("%Y%m%d-%H%M%S"))
+            path = os.path.join(base, folder)
+            n = path
+            i = 2
+            while os.path.exists(n):   # avoid clobbering an existing folder
+                n = f"{path}-{i}"; i += 1
+            path = n
+            os.makedirs(path)
+            self._run(self.backend.set_working_dir(path))
+            try:
+                prefs = _load_prefs(); prefs["workdir"] = path; _save_prefs(prefs)
+            except Exception:
+                pass
+            return {"ok": True, "path": path}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def set_working_dir(self, path, remember=True):
         # `remember` persists this as the default folder for next launch. We only
         # remember folders the user *explicitly picks* -- browsing an old chat

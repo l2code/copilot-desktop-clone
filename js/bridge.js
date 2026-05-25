@@ -169,6 +169,8 @@ document.addEventListener('click', (e)=>{
   if(comp && !comp.contains(e.target)){ closeSlash(); closeAt(); }
   const md = document.getElementById('modeDD');
   if(md && !md.contains(e.target)) md.classList.remove('open');
+  const pmw = document.getElementById('projMenuWrap');
+  if(pmw && !pmw.contains(e.target)) closeProjMenu();
 });
 
 // ===== Keyboard shortcuts =====

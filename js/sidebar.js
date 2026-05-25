@@ -197,3 +197,20 @@ async function pickFolder(){
     setTimeout(()=>{ const bn=document.getElementById('bannerHost'); if(bn) bn.innerHTML=''; }, 4000);
   }
 }
+
+// ===== New project menu (next to the Projects header) =====
+function toggleProjMenu(e){ if(e) e.stopPropagation(); const m=document.getElementById('projMenu'); if(m) m.classList.toggle('open'); }
+function closeProjMenu(){ const m=document.getElementById('projMenu'); if(m) m.classList.remove('open'); }
+async function newProjectScratch(){
+  closeProjMenu();
+  if(!backendReady){ flashBanner('Create a project after Copilot connects', 'warn'); return; }
+  let r; try{ r = await window.pywebview.api.new_project(); }catch(e){ return; }
+  if(r && r.ok){
+    setWdDisplay(r.path);
+    newChat();
+    showBanner('ok','New project created at ' + r.path);
+    setTimeout(()=>{ const bn=document.getElementById('bannerHost'); if(bn) bn.innerHTML=''; }, 5000);
+  } else {
+    flashBanner((r && r.error) || 'Could not create project', 'warn');
+  }
+}
