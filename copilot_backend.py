@@ -27,7 +27,7 @@ def _dbg(*parts):
     if os.environ.get("COPILOT_DEBUG"):
         print(f"[dbg {time.strftime('%H:%M:%S')}]", *parts, file=sys.stderr, flush=True)
 from copilot.generated.session_events import SessionEventType
-from copilot.generated.rpc import (ModeSetRequest, SessionMode, SessionsForkRequest,
+from copilot.generated.rpc import (ModeSetRequest, SessionMode,
                                    MCPDiscoverRequest, MCPConfigEnableRequest,
                                    MCPConfigDisableRequest, ToolsListRequest,
                                    HistoryTruncateRequest)
@@ -214,30 +214,24 @@ class CopilotBackend:
             self.perm_rules.update({k: v for k, v in rules.items() if v in ("allow", "ask", "deny")})
 
     async def undo(self):
-        """Rewind the last turn by forking the session to just before the last
-        user message and resuming the fork as the active session."""
-        if not (self.client and self.session and self._user_event_ids):
+        """Rewind the last turn in place via history.truncate: remove the last
+        user.message event and everything after it (its assistant reply). Cleaner
+        than fork+resume (same session, no re-create).
+
+        Honest caveat (unchanged): this rewinds the *conversation* only. It does
+        NOT revert file edits on disk -- the SDK exposes no disk-restore RPC."""
+        if not (self.session and self._user_event_ids):
             return {"ok": False, "error": "Nothing to undo"}
         target = self._user_event_ids[-1]
-        sid = getattr(self.session, "session_id", None)
-        if not sid or not target:
+        if not target:
             return {"ok": False, "error": "No undo point"}
-        res = await self.client.rpc.sessions.fork(
-            SessionsForkRequest(session_id=sid, to_event_id=target))
-        new_id = getattr(res, "session_id", None)
-        if not new_id:
-            return {"ok": False, "error": "Fork failed"}
-        self.session = await self.client.resume_session(
-            new_id, on_permission_request=self._handle_permission,
-            on_event=self._handle_event, streaming=True,
-            working_directory=self.working_dir)
+        try:
+            res = await self.session.rpc.history.truncate(
+                HistoryTruncateRequest(event_id=target))
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
         self._user_event_ids.pop()
-        if self.mode and self.mode != "interactive":
-            try:
-                await self.session.rpc.mode.set(ModeSetRequest(mode=SessionMode(self.mode)))
-            except Exception:
-                pass
-        return {"ok": True}
+        return {"ok": True, "removed": getattr(res, "events_removed", None)}
 
     async def _make_session(self):
         # Config discovery loads instructions + MCP servers from .github and the
