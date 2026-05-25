@@ -23,6 +23,18 @@ class GitLabService:
                 return os.environ[name], name
         return None, None
 
+    def env_status(self) -> dict:
+        token, source = self.discover_token()
+        return {
+            "ok": True,
+            "base_url": self.base_url,
+            "host": self.host,
+            "token_source": source,
+            "has_token": bool(token),
+            "default_project": os.environ.get("GITLAB_PROJECT_ID") or os.environ.get("GITLAB_PROJECT_PATH"),
+            "default_group": os.environ.get("GITLAB_GROUP_ID") or os.environ.get("GITLAB_GROUP_PATH"),
+        }
+
     def auth_status(self) -> dict:
         token, source = self.discover_token()
         if not token:

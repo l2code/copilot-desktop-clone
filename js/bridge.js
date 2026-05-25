@@ -58,6 +58,9 @@ async function handleBackendResult(res){
     await loadCommands();
     newChat();
     refreshUsage();
+    if(typeof refreshWorkbench === 'function' && typeof wbTab !== 'undefined' && wbTab === 'gitlab'){
+      refreshWorkbench();
+    }
   } else if(res && res.needsAuth){
     backendReady = false;
     setStatus('warn');

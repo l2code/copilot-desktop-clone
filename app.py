@@ -214,6 +214,8 @@ class Api:
     def __init__(self):
         self.window = None
         self.backend: CopilotBackend | None = None
+        _load_env_file()
+        _apply_copilot_proxy()
         self.storage = Storage()
         self.activity = ActivityLog(self.storage)
         self.projects = ProjectService(self.storage)
@@ -1046,6 +1048,9 @@ class Api:
 
     def get_gitlab_auth_status(self):
         return self.gitlab.auth_status()
+
+    def get_gitlab_env_status(self):
+        return self.gitlab.env_status()
 
     def get_gitlab_project(self, target=None):
         try:

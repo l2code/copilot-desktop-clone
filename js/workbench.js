@@ -192,12 +192,16 @@ async function renderActivityPanel(){
 
 async function renderGitlabPanel(){
   wbSet('<div class="wb-empty">Loading GitLab backlog…</div>');
+  const env = await wbCall('get_gitlab_env_status');
   const auth = await wbCall('get_gitlab_auth_status');
   const project = await wbCall('get_gitlab_project');
   const target = project && project.project_target ? project.project_target : '';
   const authLine = auth.authenticated
     ? `Signed in as ${escapeHtml(auth.username || auth.name || 'GitLab')} · ${escapeHtml(auth.base_url || '')}`
     : `Not authenticated. Set GITLAB_TOKEN, GL_TOKEN, or GITLAB_PRIVATE_TOKEN.`;
+  const envLine = env && env.ok
+    ? `GitLab URL: ${escapeHtml(env.base_url || '')} · Token: ${escapeHtml(env.token_source || 'not detected')}${env.default_project ? ' · Project: ' + escapeHtml(env.default_project) : ''}${env.default_group ? ' · Group: ' + escapeHtml(env.default_group) : ''}`
+    : '';
   const backlog = await wbCall('list_gitlab_backlog', target || null, 'project', 'opened', null, null);
   const issues = (backlog.issues || []).map(issue => {
     const labels = (issue.labels || []).map(l=>`<span class="wb-label">${escapeHtml(l)}</span>`).join('');
@@ -215,6 +219,7 @@ async function renderGitlabPanel(){
   }).join('') || `<div class="wb-empty">${escapeHtml(backlog.error || 'No open backlog items found.')}</div>`;
   wbSet(`
     <div class="wb-note">${authLine}</div>
+    <div class="wb-note">${envLine}</div>
     <div class="wb-row">
       <input id="wbGitlabTarget" class="wb-input" placeholder="group/project or project id" value="${escapeAttr(target)}">
       <button class="wb-mini" onclick="renderGitlabPanelWithTarget()">Load</button>
