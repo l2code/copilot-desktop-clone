@@ -35,8 +35,11 @@ os.environ.setdefault("QT_API", "pyqt6")
 # doesn't hang on a slow/blocked network. Read by WebView2 at environment creation.
 os.environ.setdefault(
     "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-    "--no-first-run --disable-background-networking --disable-component-update "
-    "--disable-features=msSmartScreenProtection,OptimizationGuideModelDownloading",
+    "--no-first-run --no-default-browser-check --disable-background-networking "
+    "--disable-component-update --disable-sync --disable-domain-reliability "
+    "--disable-client-side-phishing-detection --disable-breakpad "
+    "--disable-features=msSmartScreenProtection,OptimizationGuideModelDownloading,"
+    "OptimizationHints,Translate,InterestFeedContentSuggestions,MediaRouter",
 )
 
 _dbg("importing webview/pythonnet ...")
