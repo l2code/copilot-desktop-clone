@@ -1442,19 +1442,26 @@ def main():
         min_size=(820, 600),
     )
     api.window = window
-    # Persist the WebView2 profile/cache in a stable folder instead of pywebview's
-    # default private (throwaway) mode. Without this, WebView2 re-initializes its
-    # profile every launch, which causes the slow + highly variable cold start
-    # (sometimes 3s, sometimes 20s+) before the page/spinner can render.
+    # On Windows, prefer a private WebView2 profile by default. Copilot auth lives
+    # in the SDK subprocess, not in browser cookies, and private mode avoids stale
+    # WebView2 profile/cache hangs where the page renders but pywebviewready never
+    # fires. Set COPILOT_WEBVIEW_PERSIST=1 if you specifically want a persistent
+    # profile for debugging.
     wv_data = os.path.join(HISTORY_DIR, "webview2")
-    try:
-        os.makedirs(wv_data, exist_ok=True)
-    except Exception:
-        pass
-    _dbg("main: webview.start() — gap to 'start(): ...' = WebView2 init + page load")
+    persist_webview = os.environ.get("COPILOT_WEBVIEW_PERSIST", "").lower() in ("1", "true", "yes")
+    use_private_webview = (os.name == "nt" and not persist_webview)
+    if not use_private_webview:
+        try:
+            os.makedirs(wv_data, exist_ok=True)
+        except Exception:
+            pass
+    _dbg("main: webview.start() — gap to 'api.list_conversations' = WebView init + bridge injection")
     # gui=None lets pywebview pick the platform's webview (EdgeWebView2 on Win11).
     try:
-        webview.start(private_mode=False, storage_path=wv_data)
+        if use_private_webview:
+            webview.start(private_mode=True)
+        else:
+            webview.start(private_mode=False, storage_path=wv_data)
     except TypeError:
         webview.start()   # older pywebview without these kwargs
 
