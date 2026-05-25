@@ -40,10 +40,11 @@ os.environ.setdefault(
     # proxy (~25s TCP timeout, sometimes indefinite); going direct makes them fail
     # fast. (Copilot traffic is unaffected — it runs in a separate process that uses
     # the proxy env vars.)
-    # --disable-gpu: in a VM (e.g. VirtualBox) WebView2's GPU/compositor init can
+    # --disable-gpu / --disable-gpu-sandbox: in a virtualized/published session
+    # (Citrix, RDP, VMs) there's no real GPU, and WebView2's GPU/compositor init can
     # hang the window ("Not Responding") and never load the page. Software rendering
     # is reliable there. Harmless on real hardware for a simple UI like this.
-    "--disable-gpu --disable-gpu-compositing "
+    "--disable-gpu --disable-gpu-compositing --disable-gpu-sandbox "
     # --disk-cache-size=1 effectively disables the asset cache so an updated
     # styles.css/js always loads (otherwise the persistent profile can serve a
     # stale cached copy after you update the app). Profile/login still persist.
