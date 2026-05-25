@@ -28,7 +28,8 @@ def _dbg(*parts):
         print(f"[dbg {time.strftime('%H:%M:%S')}]", *parts, file=sys.stderr, flush=True)
 from copilot.generated.session_events import SessionEventType
 from copilot.generated.rpc import (ModeSetRequest, SessionMode, SessionsForkRequest,
-                                   MCPDiscoverRequest)
+                                   MCPDiscoverRequest, MCPConfigEnableRequest,
+                                   MCPConfigDisableRequest)
 from copilot.session import PermissionRequestResult
 
 
@@ -302,6 +303,21 @@ class CopilotBackend:
                 "type": getattr(getattr(s, "type", None), "value", None) or "",
             })
         return out
+
+    async def set_discovered_mcp_enabled(self, name, enabled):
+        """Enable/disable a discovered MCP server (persisted disabled list), then
+        recreate the session so the change takes effect immediately."""
+        if not self.client:
+            return False
+        try:
+            if enabled:
+                await self.client.rpc.mcp.config.enable(MCPConfigEnableRequest(names=[name]))
+            else:
+                await self.client.rpc.mcp.config.disable(MCPConfigDisableRequest(names=[name]))
+            await self._recreate()
+            return True
+        except Exception:
+            return False
 
     async def set_mcp_servers(self, servers):
         self.mcp_servers = servers or None

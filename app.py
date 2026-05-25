@@ -350,6 +350,15 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e), "servers": []}
 
+    def set_discovered_mcp_enabled(self, name, enabled):
+        if not self.backend:
+            return {"ok": False, "error": "Backend not started"}
+        try:
+            ok = self._run(self.backend.set_discovered_mcp_enabled(name, bool(enabled)), timeout=60)
+            return {"ok": bool(ok)}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def get_mcp_status(self):
         if not self.backend:
             return {"ok": True, "status": {}, "disabled": []}

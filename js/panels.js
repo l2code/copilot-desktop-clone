@@ -295,7 +295,9 @@ function renderMcpList(){
       <span class="mcp-badge ${escapeHtml(st)}" title="${escapeAttr(err)}">${escapeHtml(st)}</span>
       <span class="mcp-meta" title="${escapeAttr(meta)}">${escapeHtml(meta)}</span>
       <span class="mcp-spacer"></span>
-      <span class="mcp-actions"><span class="mcp-readonly">read-only</span></span></div>`;
+      <span class="mcp-actions">
+        <button class="seg" onclick="mcpDiscToggle('${escapeJsArg(n)}', ${d.enabled})">${d.enabled?'Disable':'Enable'}</button>
+      </span></div>`;
   }).join('');
   host.innerHTML = ownRows + (discRows ? '<div class="mcp-sub">Discovered (from .github / ~/.copilot)</div>' + discRows : '');
 }
@@ -364,6 +366,16 @@ async function mcpSaveForm(){
   document.getElementById('mcpForm').style.display = 'none';
   if(backendReady){ try{ await window.pywebview.api.set_mcp(mcpServers); }catch(e){} }
   renderMcpList(); flashBanner('MCP server saved');
+}
+// Enable/disable a discovered (~/.copilot/.github) server — persisted, recreates session.
+async function mcpDiscToggle(name, currentlyEnabled){
+  if(!backendReady) return;
+  const want = !currentlyEnabled;
+  try{ await window.pywebview.api.set_discovered_mcp_enabled(name, want); }catch(e){}
+  const d = (mcpDiscovered||[]).find(x=>x.name===name); if(d) d.enabled = want;
+  renderMcpList();
+  flashBanner((want?'Enabled ':'Disabled ') + name);
+  newChat();   // session was recreated to apply the change
 }
 async function mcpToggle(name, enable){
   if(backendReady){ try{ await window.pywebview.api.set_mcp_enabled(name, enable); }catch(e){} }
