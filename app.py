@@ -40,7 +40,10 @@ os.environ.setdefault(
     # proxy (~25s TCP timeout, sometimes indefinite); going direct makes them fail
     # fast. (Copilot traffic is unaffected — it runs in a separate process that uses
     # the proxy env vars.)
-    "--no-proxy-server --no-first-run --no-default-browser-check "
+    # --disk-cache-size=1 effectively disables the asset cache so an updated
+    # styles.css/js always loads (otherwise the persistent profile can serve a
+    # stale cached copy after you update the app). Profile/login still persist.
+    "--disk-cache-size=1 --no-proxy-server --no-first-run --no-default-browser-check "
     "--disable-background-networking --disable-component-update --disable-sync "
     "--disable-domain-reliability --disable-client-side-phishing-detection --disable-breakpad "
     "--disable-features=msSmartScreenProtection,OptimizationGuideModelDownloading,"
