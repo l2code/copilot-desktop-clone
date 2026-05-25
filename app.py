@@ -103,6 +103,11 @@ def _load_env_file() -> None:
     Existing environment variables are NOT overridden (setdefault semantics), and
     values may be quoted. Robust to passwords containing special characters since
     we split only on the first '='."""
+    explicit_keys = {
+        "GITLAB_URL", "GITLAB_API_URL", "GITLAB_PROJECT_ID", "GITLAB_PROJECT_PATH",
+        "GITLAB_GROUP_ID", "GITLAB_GROUP_PATH", "GITLAB_TOKEN",
+        "GITLAB_PERSONAL_ACCESS_TOKEN", "GL_TOKEN", "GITLAB_PRIVATE_TOKEN",
+    }
     candidates = []
     explicit = os.environ.get("COPILOT_ENV_FILE")
     if not explicit and os.name == "nt":
@@ -119,10 +124,12 @@ def _load_env_file() -> None:
     if explicit:
         candidates.append(explicit)
     candidates.append(os.path.join(HERE, ".env"))
+    explicit_abs = os.path.abspath(os.path.expanduser(explicit)) if explicit else None
     for path in candidates:
         try:
             if not (path and os.path.isfile(path)):
                 continue
+            path_abs = os.path.abspath(os.path.expanduser(path))
             with open(path, encoding="utf-8") as f:
                 for raw in f:
                     line = raw.strip()
@@ -134,7 +141,10 @@ def _load_env_file() -> None:
                     key = key.strip()
                     val = val.strip().strip('"').strip("'")
                     if key:
-                        os.environ.setdefault(key, val)
+                        if path_abs == explicit_abs and key in explicit_keys:
+                            os.environ[key] = val
+                        else:
+                            os.environ.setdefault(key, val)
         except Exception:
             pass  # never let env loading break startup
 

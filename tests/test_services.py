@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from activity import ActivityLog
 from file_service import FileService
@@ -109,6 +110,30 @@ class ServiceTests(unittest.TestCase):
             self.assertTrue(ok["ok"])
             blocked = service.read_file(d, "../outside.txt")
             self.assertFalse(blocked["ok"])
+
+    def test_explicit_env_file_overrides_gitlab_defaults(self):
+        from app import _load_env_file
+
+        with tempfile.TemporaryDirectory() as d:
+            env_path = os.path.join(d, ".env")
+            with open(env_path, "w", encoding="utf-8") as f:
+                f.write("GITLAB_PERSONAL_ACCESS_TOKEN=abc\n")
+                f.write("GITLAB_URL=https://devcloud.ubs.net\n")
+                f.write("GITLAB_PROJECT_ID=170848\n")
+                f.write("GITLAB_GROUP_ID=350440\n")
+
+            env = {
+                "COPILOT_ENV_FILE": env_path,
+                "GITLAB_URL": "https://gitlab.com",
+                "GITLAB_PROJECT_ID": "old-project",
+            }
+            with patch.dict(os.environ, env, clear=True):
+                _load_env_file()
+
+                self.assertEqual(os.environ["GITLAB_URL"], "https://devcloud.ubs.net")
+                self.assertEqual(os.environ["GITLAB_PROJECT_ID"], "170848")
+                self.assertEqual(os.environ["GITLAB_GROUP_ID"], "350440")
+                self.assertEqual(os.environ["GITLAB_PERSONAL_ACCESS_TOKEN"], "abc")
 
 
 if __name__ == "__main__":
