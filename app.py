@@ -14,6 +14,7 @@ import asyncio
 import json
 import logging
 import os
+import queue
 import sys
 import threading
 import time
@@ -164,6 +165,11 @@ class Api:
         # shell; a new tab opens in the active project folder. Keyed by string id.
         self.terminals: dict[str, Terminal] = {}
         self._term_seq = 0
+        # UI updates (evaluate_js) are dispatched on a single worker thread so the
+        # callers (the asyncio loop, streaming/event callbacks) never block on the
+        # WebView. One consumer keeps messages strictly ordered.
+        self._js_queue: queue.Queue = queue.Queue()
+        threading.Thread(target=self._js_worker, daemon=True).start()
         # The SDK is async; run one event loop in a background thread and
         # marshal coroutines onto it from the (sync) JS-facing methods.
         self.loop = asyncio.new_event_loop()
@@ -177,13 +183,23 @@ class Api:
         return asyncio.run_coroutine_threadsafe(coro, self.loop).result(timeout=timeout)
 
     def _js(self, fn, *args):
-        """Invoke a global JS function on the UI, passing JSON-safe args."""
+        """Queue a global JS call on the UI (non-blocking). The dispatcher thread
+        runs evaluate_js so callers never wait on the WebView."""
         if not self.window:
             return
         payload = ",".join(json.dumps(a) for a in args)
-        _dbg("_js ->", fn)
-        self.window.evaluate_js(f"window.{fn} && window.{fn}({payload})")
-        _dbg("_js done", fn)   # if '-> fn' prints but 'done fn' doesn't, evaluate_js is blocking
+        self._js_queue.put((fn, payload))
+
+    def _js_worker(self):
+        """Single consumer: run queued evaluate_js calls in order, off the loop thread."""
+        while True:
+            fn, payload = self._js_queue.get()
+            try:
+                if self.window:
+                    _dbg("_js exec", fn)
+                    self.window.evaluate_js(f"window.{fn} && window.{fn}({payload})")
+            except Exception as e:
+                _dbg("_js error", fn, repr(e))
 
     def _make_terminal(self) -> str:
         """Create a new terminal in the active project folder; return its id."""
