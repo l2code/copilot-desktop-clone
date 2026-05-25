@@ -17,7 +17,7 @@ async function initBackend(){
   // Show saved conversations immediately (history file; independent of the session).
   try{ conversations = (await window.pywebview.api.list_conversations()) || []; }catch(e){ conversations = []; }
   renderSidebar();
-  showConnecting(true, 'Connecting to GitHub Copilot…');   // animated spinner while start() runs
+  showConnecting(true, 'Connecting to GitHub Copilot');   // spinner + animated dots while start() runs
   try{
     const res = await window.pywebview.api.start();
     showConnecting(false);

@@ -38,8 +38,10 @@ import webview
 # unaffected -- raising the logger level stops that record from being formatted.
 logging.getLogger("pywebview").setLevel(logging.CRITICAL)
 
-from copilot_backend import CopilotBackend
 from terminal import Terminal
+# NOTE: copilot_backend (which imports the heavy Copilot SDK) is imported lazily
+# inside start(), so the window + "Connecting…" spinner appear immediately instead
+# of waiting on the SDK import — especially noticeable on a cold first run.
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 INDEX = os.path.join(HERE, "index.html")
@@ -217,6 +219,12 @@ class Api:
     # ----- exposed to the UI -----
 
     def start(self, github_token: str | None = None):
+        # Load the .env + proxy here (not at process start) so a slow OneDrive read
+        # of COPILOT_ENV_FILE happens behind the "Connecting…" spinner, not before
+        # the window appears. Both are idempotent (setdefault), safe to re-run.
+        _dbg("start(): loading env/proxy")
+        _load_env_file()
+        _apply_copilot_proxy()
         token = github_token or os.environ.get("GITHUB_TOKEN") or None
         # Restore the last working folder the user chose (persisted in prefs), so the
         # app reopens in the same project instead of defaulting to the home folder.
@@ -225,6 +233,7 @@ class Api:
                    or os.path.expanduser("~"))
         if not (workdir and os.path.isdir(workdir)):   # saved folder gone? fall back to home
             workdir = os.path.expanduser("~")
+        from copilot_backend import CopilotBackend   # lazy: heavy SDK import, kept off the UI startup path
         self.backend = CopilotBackend(github_token=token, working_dir=workdir)
         self.backend.set_handlers(
             on_delta=lambda c: self._js("onCopilotDelta", c),
@@ -642,8 +651,8 @@ def main():
         i = sys.argv.index("--host")
         if i + 1 < len(sys.argv):
             os.environ["COPILOT_HOST"] = sys.argv[i + 1]
-    _load_env_file()       # pull COPILOT_PROXY_* / COPILOT_EXE / etc. from a .env
-    _apply_copilot_proxy()  # translate COPILOT_PROXY_* -> HTTP(S)_PROXY + NODE_* flags
+    # env/proxy loading moved into Api.start() so a slow OneDrive .env read happens
+    # behind the spinner rather than delaying the window from appearing.
     api = Api()
     window = webview.create_window(
         "Copilot Desktop",

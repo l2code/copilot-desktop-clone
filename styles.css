@@ -155,6 +155,8 @@
     border-radius:50%;animation:spin .8s linear infinite}
   @keyframes spin{to{transform:rotate(360deg)}}
   .connecting-text{font-size:13px;color:var(--text-dim)}
+  .dots::after{content:'';animation:dots 1.4s steps(1,end) infinite}
+  @keyframes dots{0%{content:''}25%{content:'.'}50%{content:'..'}75%,100%{content:'...'}}
   .auth-card{text-align:center;max-width:420px;padding:24px}
   .auth-glyph{width:48px;height:48px;fill:var(--text);margin-bottom:14px}
   .auth-card h2{font-size:20px;font-weight:600;margin-bottom:8px}
