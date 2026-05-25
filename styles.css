@@ -555,6 +555,9 @@
   .wb-input,.wb-textarea{width:100%;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);padding:7px 9px;font-size:12.5px;outline:none}
   .wb-textarea{min-height:74px;resize:vertical;margin-top:6px}
   .wb-input:focus,.wb-textarea:focus{border-color:var(--accent)}
+  .wb-config{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:8px;padding:10px;border:1px solid var(--border-soft);border-radius:8px;background:#0a0d12;margin-bottom:10px}
+  .wb-config label{display:flex;flex-direction:column;gap:4px;min-width:0;font-size:11px;color:var(--text-faint);font-weight:700;text-transform:uppercase;letter-spacing:.04em}
+  .wb-config .wb-actions{grid-column:1 / -1;justify-content:flex-end}
   .wb-commit{border-top:1px solid var(--border-soft);margin-top:14px;padding-top:12px}
   .wb-row{display:flex;gap:6px;align-items:center}
   .wb-search{margin-bottom:10px}

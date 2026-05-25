@@ -10,8 +10,18 @@ import urllib.request
 
 
 class GitLabService:
-    def __init__(self, base_url: str | None = None):
+    def __init__(self, base_url: str | None = None, settings_getter=None):
         self._base_url = base_url
+        self._settings_getter = settings_getter
+
+    def _settings(self) -> dict:
+        if not self._settings_getter:
+            return {}
+        try:
+            data = self._settings_getter() or {}
+            return data if isinstance(data, dict) else {}
+        except Exception:
+            return {}
 
     @staticmethod
     def _normalize_base_url(value: str | None) -> str | None:
@@ -30,13 +40,16 @@ class GitLabService:
         return url.rstrip("/")
 
     def discover_base_url(self) -> tuple[str, str]:
+        base = self._normalize_base_url(self._base_url)
+        if base:
+            return base, "constructor"
+        settings_url = self._normalize_base_url(self._settings().get("gitlab_url"))
+        if settings_url:
+            return settings_url, "app settings"
         for name in ("GITLAB_URL", "GITLAB_BASE_URL", "CI_SERVER_URL", "GITLAB_API_URL"):
             base = self._normalize_base_url(os.environ.get(name))
             if base:
                 return base, name
-        base = self._normalize_base_url(self._base_url)
-        if base:
-            return base, "constructor"
         return "https://gitlab.com", "default"
 
     @property
@@ -49,10 +62,31 @@ class GitLabService:
         return urlparse(self.base_url).netloc or "gitlab.com"
 
     def discover_token(self) -> tuple[str | None, str | None]:
+        settings_token = str(self._settings().get("gitlab_token") or "").strip()
+        if settings_token:
+            return settings_token, "app settings"
         for name in ("GITLAB_TOKEN", "GITLAB_PERSONAL_ACCESS_TOKEN", "GL_TOKEN", "GITLAB_PRIVATE_TOKEN"):
             if os.environ.get(name):
                 return os.environ[name], name
         return None, None
+
+    def default_project(self) -> str | None:
+        settings = self._settings()
+        return (
+            str(settings.get("gitlab_project") or "").strip()
+            or os.environ.get("GITLAB_PROJECT_ID")
+            or os.environ.get("GITLAB_PROJECT_PATH")
+            or None
+        )
+
+    def default_group(self) -> str | None:
+        settings = self._settings()
+        return (
+            str(settings.get("gitlab_group") or "").strip()
+            or os.environ.get("GITLAB_GROUP_ID")
+            or os.environ.get("GITLAB_GROUP_PATH")
+            or None
+        )
 
     def env_status(self) -> dict:
         token, source = self.discover_token()
@@ -64,8 +98,8 @@ class GitLabService:
             "url_source": url_source,
             "token_source": source,
             "has_token": bool(token),
-            "default_project": os.environ.get("GITLAB_PROJECT_ID") or os.environ.get("GITLAB_PROJECT_PATH"),
-            "default_group": os.environ.get("GITLAB_GROUP_ID") or os.environ.get("GITLAB_GROUP_PATH"),
+            "default_project": self.default_project(),
+            "default_group": self.default_group(),
         }
 
     def auth_status(self) -> dict:

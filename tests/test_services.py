@@ -9,6 +9,7 @@ from file_service import FileService
 from git_service import parse_github_remote_url, parse_gitlab_remote_url, parse_porcelain_v2_z
 from gitlab_service import GitLabService
 from project_service import ProjectService
+from settings_service import SettingsService
 from session_manager import SessionManager
 from storage import Storage
 from workspace_service import WorkspaceService
@@ -143,6 +144,37 @@ class ServiceTests(unittest.TestCase):
             service = GitLabService()
             self.assertEqual(service.base_url, "https://devcloud.ubs.net")
             self.assertEqual(service.env_status()["url_source"], "GITLAB_API_URL")
+
+    def test_gitlab_app_settings_override_environment(self):
+        settings = {
+            "gitlab_url": "https://devcloud.ubs.net",
+            "gitlab_token": "abc",
+            "gitlab_project": "170848",
+            "gitlab_group": "350440",
+        }
+        with patch.dict(os.environ, {"GITLAB_URL": "https://gitlab.com", "GITLAB_TOKEN": "env-token"}, clear=True):
+            service = GitLabService(settings_getter=lambda: settings)
+            status = service.env_status()
+
+            self.assertEqual(status["base_url"], "https://devcloud.ubs.net")
+            self.assertEqual(status["url_source"], "app settings")
+            self.assertEqual(status["token_source"], "app settings")
+            self.assertEqual(status["default_project"], "170848")
+            self.assertEqual(status["default_group"], "350440")
+
+    def test_gitlab_settings_hide_saved_token(self):
+        settings = SettingsService(Storage(":memory:"))
+        settings.update_gitlab_settings({
+            "url": "https://devcloud.ubs.net",
+            "token": "secret",
+            "project": "170848",
+            "group": "350440",
+        })
+        visible = settings.get_gitlab_settings()
+
+        self.assertEqual(visible["url"], "https://devcloud.ubs.net")
+        self.assertTrue(visible["token_configured"])
+        self.assertNotIn("token", visible)
 
 
 if __name__ == "__main__":

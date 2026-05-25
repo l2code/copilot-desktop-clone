@@ -193,12 +193,22 @@ async function renderActivityPanel(){
 async function renderGitlabPanel(){
   wbSet('<div class="wb-empty">Loading GitLab backlog…</div>');
   const env = await wbCall('get_gitlab_env_status');
+  const config = await wbCall('get_gitlab_settings');
+  const settings = (config && config.settings) || {};
   const auth = await wbCall('get_gitlab_auth_status');
   const project = await wbCall('get_gitlab_project');
   const target = project && project.project_target ? project.project_target : '';
+  const urlValue = settings.url || (env && env.url_source && env.url_source !== 'default' ? env.base_url : '');
+  const projectValue = settings.project || (env && env.default_project) || target || '';
+  const groupValue = settings.group || (env && env.default_group) || '';
+  const tokenPlaceholder = settings.token_configured
+    ? 'Token saved, leave blank to keep'
+    : ((env && env.token_source) ? `Token detected from ${env.token_source}` : 'Personal access token');
   const authLine = auth.authenticated
     ? `Signed in as ${escapeHtml(auth.username || auth.name || 'GitLab')} · ${escapeHtml(auth.base_url || '')}`
-    : `Not authenticated. Set GITLAB_TOKEN, GITLAB_PERSONAL_ACCESS_TOKEN, GL_TOKEN, or GITLAB_PRIVATE_TOKEN.`;
+    : (auth && auth.error
+      ? `Not authenticated: ${escapeHtml(auth.error)}`
+      : `Not authenticated. Set a token below or with GITLAB_TOKEN, GITLAB_PERSONAL_ACCESS_TOKEN, GL_TOKEN, or GITLAB_PRIVATE_TOKEN.`);
   const envLine = env && env.ok
     ? `GitLab URL: ${escapeHtml(env.base_url || '')} · Source: ${escapeHtml(env.url_source || 'default')} · Token: ${escapeHtml(env.token_source || 'not detected')}${env.default_project ? ' · Project: ' + escapeHtml(env.default_project) : ''}${env.default_group ? ' · Group: ' + escapeHtml(env.default_group) : ''}`
     : '';
@@ -224,6 +234,17 @@ async function renderGitlabPanel(){
     </div>`;
   }).join('') || `<div class="wb-empty">${escapeHtml(backlog.error || 'No open backlog items found.')}</div>`;
   wbSet(`
+    <div class="wb-section-title">GitLab connection</div>
+    <div class="wb-config">
+      <label>URL<input id="wbGitlabUrl" class="wb-input" placeholder="https://gitlab.example.com" value="${escapeAttr(urlValue)}"></label>
+      <label>Project<input id="wbGitlabDefaultProject" class="wb-input" placeholder="project id or group/project" value="${escapeAttr(projectValue)}"></label>
+      <label>Group<input id="wbGitlabDefaultGroup" class="wb-input" placeholder="group id or path" value="${escapeAttr(groupValue)}"></label>
+      <label>Token<input id="wbGitlabToken" class="wb-input" type="password" placeholder="${escapeAttr(tokenPlaceholder)}"></label>
+      <div class="wb-actions">
+        <button class="wb-primary" onclick="wbGitlabSaveSettings()">Save connection</button>
+        ${settings.token_configured ? '<button class="wb-mini danger" onclick="wbGitlabClearToken()">Clear token</button>' : ''}
+      </div>
+    </div>
     <div class="wb-note">${authLine}</div>
     <div class="wb-note">${envLine}</div>
     <div class="wb-note">${envFileLine}</div>
@@ -245,6 +266,27 @@ async function renderGitlabPanel(){
       <button class="wb-mini" onclick="wbGitlabLoadEpics()">Load epics</button>
     </div>
     <div id="wbGitlabEpics"></div>`);
+}
+
+async function wbGitlabSaveSettings(){
+  const token = ((document.getElementById('wbGitlabToken') || {}).value || '').trim();
+  const patch = {
+    url: ((document.getElementById('wbGitlabUrl') || {}).value || '').trim(),
+    project: ((document.getElementById('wbGitlabDefaultProject') || {}).value || '').trim(),
+    group: ((document.getElementById('wbGitlabDefaultGroup') || {}).value || '').trim(),
+  };
+  if(token) patch.token = token;
+  const r = await wbCall('update_gitlab_settings', patch);
+  flashBanner(r && r.ok ? 'GitLab connection saved' : ((r && r.error) || 'Could not save GitLab connection'), r && r.ok ? 'ok' : 'warn');
+  await renderGitlabPanel();
+}
+
+function wbGitlabClearToken(){
+  askConfirm('Clear the saved GitLab token?', async()=>{
+    const r = await wbCall('update_gitlab_settings', {clear_token:true});
+    flashBanner(r && r.ok ? 'GitLab token cleared' : ((r && r.error) || 'Could not clear GitLab token'), r && r.ok ? 'ok' : 'warn');
+    await renderGitlabPanel();
+  }, 'Clear token');
 }
 
 async function renderGitlabPanelWithTarget(){

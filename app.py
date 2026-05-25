@@ -264,7 +264,7 @@ class Api:
         self.settings = SettingsService(self.storage)
         self.files = FileService()
         self.github = GitHubService()
-        self.gitlab = GitLabService()
+        self.gitlab = GitLabService(settings_getter=self.settings.get_settings)
         self.troubleshooting = TroubleshootingService(self.storage)
         self.automations = AutomationService(self.storage)
         self.workflows = WorkflowService(self.storage, self.activity)
@@ -814,9 +814,9 @@ class Api:
     def _gitlab_project_target(self, target=None, project_id=None):
         if target:
             return str(target)
-        env_target = os.environ.get("GITLAB_PROJECT_ID") or os.environ.get("GITLAB_PROJECT_PATH")
-        if env_target:
-            return env_target
+        default_target = self.gitlab.default_project()
+        if default_target:
+            return default_target
         project = self._project_for_api(project_id)
         remote = git_service.get_remote_url(project["main_repo_path"])
         parsed = git_service.parse_gitlab_remote_url(remote, self.gitlab.host)
@@ -1094,6 +1094,19 @@ class Api:
         status["env_file"] = _env_file_status()
         return status
 
+    def get_gitlab_settings(self):
+        settings = self.settings.get_gitlab_settings()
+        status = self.gitlab.env_status()
+        return {"ok": True, "settings": settings, "status": status}
+
+    def update_gitlab_settings(self, patch=None):
+        try:
+            settings = self.settings.update_gitlab_settings(patch or {})
+            status = self.gitlab.env_status()
+            return {"ok": True, "settings": settings, "status": status}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
     def get_gitlab_project(self, target=None):
         try:
             target = self._gitlab_project_target(target)
@@ -1105,7 +1118,7 @@ class Api:
     def list_gitlab_backlog(self, target=None, scope="project", state="opened", labels=None, search=None):
         try:
             if scope == "group":
-                group = target or os.environ.get("GITLAB_GROUP_ID") or os.environ.get("GITLAB_GROUP_PATH")
+                group = target or self.gitlab.default_group()
                 if not group:
                     raise ValueError("GitLab group path/id is required")
                 res = self.gitlab.list_group_issues(group, state=state or "opened", labels=labels, search=search)
@@ -1146,7 +1159,7 @@ class Api:
 
     def list_gitlab_epics(self, group=None, state="opened"):
         try:
-            group = group or os.environ.get("GITLAB_GROUP_ID") or os.environ.get("GITLAB_GROUP_PATH")
+            group = group or self.gitlab.default_group()
             if not group:
                 raise ValueError("GitLab group path/id is required for epics")
             res = self.gitlab.list_group_epics(group, state=state or "opened")
@@ -1156,7 +1169,7 @@ class Api:
 
     def create_gitlab_epic(self, group=None, title="", description="", labels=None):
         try:
-            group = group or os.environ.get("GITLAB_GROUP_ID") or os.environ.get("GITLAB_GROUP_PATH")
+            group = group or self.gitlab.default_group()
             if not group:
                 raise ValueError("GitLab group path/id is required for epics")
             res = self.gitlab.create_group_epic(group, title, description, labels)
@@ -1166,7 +1179,7 @@ class Api:
 
     def update_gitlab_epic(self, group=None, epic_iid=None, patch=None):
         try:
-            group = group or os.environ.get("GITLAB_GROUP_ID") or os.environ.get("GITLAB_GROUP_PATH")
+            group = group or self.gitlab.default_group()
             if not group:
                 raise ValueError("GitLab group path/id is required for epics")
             res = self.gitlab.update_group_epic(group, int(epic_iid), patch or {})
@@ -1237,7 +1250,11 @@ class Api:
             return {"ok": False, "error": str(e)}
 
     def get_app_settings(self):
-        return {"ok": True, "settings": self.settings.get_settings()}
+        settings = self.settings.get_settings()
+        if settings.get("gitlab_token"):
+            settings["gitlab_token"] = ""
+            settings["gitlab_token_configured"] = "1"
+        return {"ok": True, "settings": settings}
 
     def update_app_settings(self, patch=None):
         try:
