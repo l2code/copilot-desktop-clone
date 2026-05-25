@@ -30,6 +30,15 @@ def _dbg(*parts):
 # make sure qtpy targets PyQt6. Harmless on Windows/GTK. Set before importing.
 os.environ.setdefault("QT_API", "pyqt6")
 
+# WebView2 can stall its startup on background network calls (component updates,
+# SmartScreen, telemetry). These flags skip them so init is fast + consistent and
+# doesn't hang on a slow/blocked network. Read by WebView2 at environment creation.
+os.environ.setdefault(
+    "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+    "--no-first-run --disable-background-networking --disable-component-update "
+    "--disable-features=msSmartScreenProtection,OptimizationGuideModelDownloading",
+)
+
 _dbg("importing webview/pythonnet ...")
 import webview
 _dbg("webview imported")
@@ -600,6 +609,9 @@ class Api:
     # ----- conversation history (no backend required) -----
 
     def list_conversations(self):
+        # First call marks when the JS bridge became ready (~pywebviewready). The gap
+        # from "main: webview.start()" to here is pure WebView2 init + page load.
+        _dbg("api.list_conversations (bridge ready)")
         convs = sorted(
             _load_history()["conversations"],
             key=lambda c: c.get("updated", 0),
