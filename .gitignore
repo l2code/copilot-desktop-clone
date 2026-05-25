@@ -18,7 +18,6 @@ __pycache__/
 # Local env file (may hold proxy credentials / tokens) — never commit
 .env
 *.env
-!example.env
 
 # OS / editor cruft
 .DS_Store

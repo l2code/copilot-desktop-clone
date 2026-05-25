@@ -106,9 +106,12 @@ Copilot SDK subprocess) uses standard proxy environment variables —
 - If you launch from a shell that already exports those (e.g. where the Copilot
   CLI worked), they're inherited automatically.
 - For double-click launches, the app loads a `.env` next to `app.py` at startup.
-  Copy `example.env` → `.env` and add your proxy lines (it's gitignored). Or set
-  `COPILOT_ENV_FILE` (see `run.bat`) to point at an existing `.env` without
-  copying it. Existing environment variables are never overridden.
+  Create a `.env` (it's gitignored) with your proxy lines, or set `COPILOT_ENV_FILE`
+  (see `run.bat`) to point at an existing `.env` without copying it. Existing
+  environment variables are never overridden. Supported keys include
+  `HTTP(S)_PROXY` / `NO_PROXY`, the Copilot CLI's `COPILOT_PROXY_USERNAME` /
+  `COPILOT_PROXY_PASSWORD` / `COPILOT_PROXY_HOST`, `COPILOT_DESKTOP_CLI`, and
+  `COPILOT_NO_DISCOVERY`.
 - If you use the Copilot CLI's `COPILOT_PROXY_USERNAME` / `COPILOT_PROXY_PASSWORD`
   / `COPILOT_PROXY_HOST`, the app translates them into the standard proxy env it
   needs (URL-encoded `HTTP(S)_PROXY` plus `NODE_USE_ENV_PROXY` / `NODE_USE_SYSTEM_CA`,
