@@ -15,6 +15,9 @@ class SettingsService:
         "gitlab_url": "",
         "gitlab_token": "",
         "gitlab_auth_type": "private-token",
+        "gitlab_data_source": "rest",
+        "gitlab_mcp_config": "",
+        "gitlab_mcp_server": "GitLab-MCP",
         "gitlab_project": "",
         "gitlab_group": "",
     }
@@ -39,6 +42,9 @@ class SettingsService:
         return {
             "url": settings.get("gitlab_url", ""),
             "auth_type": settings.get("gitlab_auth_type", "private-token"),
+            "data_source": settings.get("gitlab_data_source", "rest"),
+            "mcp_config": settings.get("gitlab_mcp_config", ""),
+            "mcp_server": settings.get("gitlab_mcp_server", "GitLab-MCP"),
             "project": settings.get("gitlab_project", ""),
             "group": settings.get("gitlab_group", ""),
             "token_configured": bool(settings.get("gitlab_token")),
@@ -49,6 +55,9 @@ class SettingsService:
         mapping = {
             "url": "gitlab_url",
             "auth_type": "gitlab_auth_type",
+            "data_source": "gitlab_data_source",
+            "mcp_config": "gitlab_mcp_config",
+            "mcp_server": "gitlab_mcp_server",
             "project": "gitlab_project",
             "group": "gitlab_group",
         }
@@ -57,6 +66,8 @@ class SettingsService:
                 value = str(data.get(public_key) or "").strip()
                 if public_key == "auth_type" and value not in ("private-token", "bearer", "both"):
                     value = "private-token"
+                if public_key == "data_source" and value not in ("rest", "mcp"):
+                    value = "rest"
                 self.storage.set_setting(setting_key, value)
         if data.get("clear_token"):
             self.storage.set_setting("gitlab_token", "")

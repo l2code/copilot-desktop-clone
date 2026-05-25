@@ -70,6 +70,7 @@ from automation_service import AutomationService
 from file_service import FileService
 from github_service import GitHubService
 from gitlab_service import GitLabService
+from mcp_gitlab_service import GitLabMCPService
 import git_service
 from project_service import ProjectService
 from session_manager import SessionManager
@@ -272,6 +273,7 @@ class Api:
         self.files = FileService()
         self.github = GitHubService()
         self.gitlab = GitLabService(settings_getter=self.settings.get_settings)
+        self.gitlab_mcp = GitLabMCPService(settings_getter=self.settings.get_settings)
         self.troubleshooting = TroubleshootingService(self.storage)
         self.automations = AutomationService(self.storage)
         self.workflows = WorkflowService(self.storage, self.activity)
@@ -1108,6 +1110,7 @@ class Api:
     def get_gitlab_env_status(self):
         status = self.gitlab.env_status()
         status["env_file"] = _env_file_status()
+        status["data_source"] = self.settings.get_gitlab_settings().get("data_source", "rest")
         return status
 
     def get_gitlab_settings(self):
@@ -1123,6 +1126,9 @@ class Api:
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
+    def get_gitlab_mcp_status(self):
+        return self.gitlab_mcp.status()
+
     def get_gitlab_project(self, target=None):
         try:
             target = self._gitlab_project_target(target)
@@ -1133,6 +1139,8 @@ class Api:
 
     def list_gitlab_backlog(self, target=None, scope="project", state="opened", labels=None, search=None):
         try:
+            if self.settings.get_gitlab_settings().get("data_source") == "mcp":
+                return self.gitlab_mcp.search_stories(search or "", target, scope, state or "opened", labels, None)
             if scope == "group":
                 group = target or self.gitlab.default_group()
                 if not group:
@@ -1144,6 +1152,71 @@ class Api:
             return {"ok": res.get("ok"), "scope": "project", "target": project, **res}
         except Exception as e:
             return {"ok": False, "error": str(e), "issues": []}
+
+    def list_gitlab_current_sprint(self, group=None, assignee=None, labels=None):
+        try:
+            if self.settings.get_gitlab_settings().get("data_source") == "mcp":
+                return self.gitlab_mcp.current_sprint(group=group, assignee=assignee, labels=labels)
+            group = group or self.gitlab.default_group()
+            if not group:
+                raise ValueError("Set a GitLab group id/path to load the current sprint iteration.")
+            iterations = self.gitlab.list_group_iterations(group, state="current")
+            if not iterations.get("ok"):
+                return {"ok": False, "group": group, "error": iterations.get("error"), "issues": [], "iterations": []}
+            current = (iterations.get("iterations") or [None])[0]
+            if not current:
+                return {"ok": True, "group": group, "iteration": None, "issues": [], "iterations": [], "message": "No current GitLab iteration found for this group."}
+            res = self.gitlab.list_group_issues(
+                group,
+                state="opened",
+                labels=labels,
+                iteration_id=current.get("id"),
+                assignee_username=assignee,
+                per_page=100,
+            )
+            return {"ok": res.get("ok"), "group": group, "iteration": current, "issues": res.get("issues", []), "error": res.get("error")}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "issues": []}
+
+    def search_gitlab_stories(self, query="", target=None, scope="project", state="opened", labels=None, assignee=None):
+        try:
+            if self.settings.get_gitlab_settings().get("data_source") == "mcp":
+                return self.gitlab_mcp.search_stories(query, target, scope, state, labels, assignee)
+            if scope == "group":
+                group = target or self.gitlab.default_group()
+                if not group:
+                    raise ValueError("GitLab group path/id is required")
+                res = self.gitlab.list_group_issues(
+                    group,
+                    state=state or "opened",
+                    labels=labels,
+                    search=query,
+                    assignee_username=assignee,
+                    per_page=100,
+                )
+                return {"ok": res.get("ok"), "scope": "group", "target": group, "issues": res.get("issues", []), "error": res.get("error")}
+            project = self._gitlab_project_target(target)
+            res = self.gitlab.list_project_issues(
+                project,
+                state=state or "opened",
+                labels=labels,
+                search=query,
+                assignee_username=assignee,
+                per_page=100,
+            )
+            return {"ok": res.get("ok"), "scope": "project", "target": project, "issues": res.get("issues", []), "error": res.get("error")}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "issues": []}
+
+    def get_gitlab_issue(self, target=None, issue_iid=None):
+        try:
+            if self.settings.get_gitlab_settings().get("data_source") == "mcp":
+                return self.gitlab_mcp.get_issue(target, issue_iid)
+            project = self._gitlab_project_target(target)
+            res = self.gitlab.get_project_issue(project, int(issue_iid))
+            return {"ok": res.get("ok"), "target": project, **res}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
 
     def create_gitlab_issue(self, target=None, title="", description="", labels=None):
         try:

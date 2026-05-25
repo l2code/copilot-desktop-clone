@@ -217,6 +217,9 @@ class GitLabService:
         state: str = "opened",
         labels: str | None = None,
         search: str | None = None,
+        iteration_id: str | int | None = None,
+        milestone: str | None = None,
+        assignee_username: str | None = None,
         page: int = 1,
         per_page: int = 50,
     ) -> dict:
@@ -224,6 +227,9 @@ class GitLabService:
             "state": state,
             "labels": labels,
             "search": search,
+            "iteration_id": iteration_id,
+            "milestone": milestone,
+            "assignee_username": assignee_username,
             "scope": "all",
             "order_by": "updated_at",
             "sort": "desc",
@@ -241,6 +247,9 @@ class GitLabService:
         state: str = "opened",
         labels: str | None = None,
         search: str | None = None,
+        iteration_id: str | int | None = None,
+        milestone: str | None = None,
+        assignee_username: str | None = None,
         page: int = 1,
         per_page: int = 50,
     ) -> dict:
@@ -248,6 +257,9 @@ class GitLabService:
             "state": state,
             "labels": labels,
             "search": search,
+            "iteration_id": iteration_id,
+            "milestone": milestone,
+            "assignee_username": assignee_username,
             "scope": "all",
             "order_by": "updated_at",
             "sort": "desc",
@@ -256,6 +268,22 @@ class GitLabService:
         })
         if res.get("ok"):
             res["issues"] = [self._issue(i) for i in (res.get("data") or [])]
+        return res
+
+    def list_group_iterations(self, group: str | int, state: str = "current") -> dict:
+        res = self._request("GET", f"/groups/{self._group(group)}/iterations", params={
+            "state": state,
+            "include_ancestors": "true",
+            "per_page": 20,
+        })
+        if res.get("ok"):
+            res["iterations"] = [self._iteration(i) for i in (res.get("data") or [])]
+        return res
+
+    def get_project_issue(self, project: str | int, issue_iid: int) -> dict:
+        res = self._request("GET", f"/projects/{self._project(project)}/issues/{int(issue_iid)}")
+        if res.get("ok"):
+            res["issue"] = self._issue(res.get("data") or {})
         return res
 
     def create_issue(self, project: str | int, title: str, description: str = "", labels: str | None = None) -> dict:
@@ -332,6 +360,20 @@ class GitLabService:
             "due_date": issue.get("due_date"),
             "issue_type": issue.get("issue_type"),
             "references": issue.get("references") or {},
+            "iteration": issue.get("iteration") or {},
+            "milestone": issue.get("milestone") or {},
+        }
+
+    @staticmethod
+    def _iteration(iteration: dict) -> dict:
+        return {
+            "id": iteration.get("id"),
+            "iid": iteration.get("iid"),
+            "title": iteration.get("title"),
+            "state": iteration.get("state"),
+            "start_date": iteration.get("start_date"),
+            "due_date": iteration.get("due_date"),
+            "web_url": iteration.get("web_url"),
         }
 
     @staticmethod

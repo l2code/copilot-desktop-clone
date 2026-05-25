@@ -8,6 +8,7 @@ from activity import ActivityLog
 from file_service import FileService
 from git_service import parse_github_remote_url, parse_gitlab_remote_url, parse_porcelain_v2_z
 from gitlab_service import GitLabService
+from mcp_gitlab_service import GitLabMCPService
 from project_service import ProjectService
 from settings_service import SettingsService
 from session_manager import SessionManager
@@ -187,6 +188,58 @@ class ServiceTests(unittest.TestCase):
         self.assertIn("GitLab API returned HTML instead of JSON", msg)
         self.assertIn("UBS Login", msg)
         self.assertNotIn("<!DOCTYPE", msg)
+
+    def test_gitlab_iteration_and_story_filters(self):
+        service = GitLabService()
+        calls = []
+
+        def fake_request(method, path, body=None, params=None):
+            calls.append((method, path, params or {}))
+            if path.endswith("/iterations"):
+                return {"ok": True, "data": [{"id": 7, "title": "Sprint 12", "state": "current"}]}
+            return {"ok": True, "data": []}
+
+        service._request = fake_request
+        iterations = service.list_group_iterations("350440")
+        issues = service.list_group_issues("350440", iteration_id=7, assignee_username="issacre", labels="story")
+
+        self.assertEqual(iterations["iterations"][0]["id"], 7)
+        self.assertEqual(calls[0][1], "/groups/350440/iterations")
+        self.assertEqual(calls[1][2]["iteration_id"], 7)
+        self.assertEqual(calls[1][2]["assignee_username"], "issacre")
+        self.assertEqual(calls[1][2]["labels"], "story")
+        self.assertEqual(issues["issues"], [])
+
+    def test_gitlab_mcp_config_selects_gitlab_server(self):
+        with tempfile.TemporaryDirectory() as d:
+            config = os.path.join(d, "mcp-config.json")
+            with open(config, "w", encoding="utf-8") as f:
+                json.dump({
+                    "mcpServers": {
+                        "Other": {"command": "other"},
+                        "GitLab-MCP": {
+                            "args": ["launcher.cmd"],
+                            "env": {"GITLAB_API_URL": "https://devcloud.ubs.net/api/v4"},
+                        },
+                    }
+                }, f)
+
+            service = GitLabMCPService(settings_getter=lambda: {"gitlab_mcp_config": config})
+            path, name, server = service._server_config()
+            command, args = service._command(server)
+
+            self.assertEqual(path, config)
+            self.assertEqual(name, "GitLab-MCP")
+            self.assertEqual(command, "launcher.cmd")
+            self.assertEqual(args, [])
+
+    def test_gitlab_mcp_wraps_windows_cmd_launchers(self):
+        service = GitLabMCPService(settings_getter=lambda: {})
+        with patch("mcp_gitlab_service.os.name", "nt"):
+            command, args = service._command({"args": [r"C:\devpod\gitlab-mcp-launcher.cmd"]})
+
+        self.assertTrue(command.endswith("cmd.exe") or command == "cmd.exe")
+        self.assertEqual(args[:2], ["/c", r"C:\devpod\gitlab-mcp-launcher.cmd"])
 
 
 if __name__ == "__main__":

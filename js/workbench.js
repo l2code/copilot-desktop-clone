@@ -6,6 +6,7 @@ const WB_TABS = [
   ['changes', 'Changes'],
   ['files', 'Files'],
   ['activity', 'Activity'],
+  ['sprint', 'Sprint'],
   ['gitlab', 'GitLab'],
   ['github', 'GitHub'],
   ['workflows', 'Workflows'],
@@ -51,6 +52,7 @@ async function refreshWorkbench(){
     if(wbTab === 'changes') await renderChangesPanel();
     else if(wbTab === 'files') await renderFilesPanel();
     else if(wbTab === 'activity') await renderActivityPanel();
+    else if(wbTab === 'sprint') await renderSprintPanel();
     else if(wbTab === 'gitlab') await renderGitlabPanel();
     else if(wbTab === 'github') await renderGithubPanel();
     else if(wbTab === 'workflows') await renderWorkflowsPanel();
@@ -190,6 +192,91 @@ async function renderActivityPanel(){
   wbSet(`<div class="wb-list">${rows}</div>`);
 }
 
+function wbIssueMeta(issue){
+  const bits = [];
+  if(issue.issue_type) bits.push(issue.issue_type);
+  if(issue.state) bits.push(issue.state);
+  if(issue.assignees && issue.assignees.length) bits.push('@' + issue.assignees.join(', @'));
+  if(issue.weight !== null && issue.weight !== undefined) bits.push('weight ' + issue.weight);
+  if(issue.due_date) bits.push('due ' + issue.due_date);
+  if(issue.updated_at) bits.push('updated ' + issue.updated_at);
+  return bits.join(' · ');
+}
+
+function wbGitlabStoryRow(issue, backTab){
+  const labels = (issue.labels || []).map(l=>`<span class="wb-label">${escapeHtml(l)}</span>`).join('');
+  const project = issue.project_id || '';
+  const title = issue.title || '';
+  return `<div class="wb-gh-row wb-gitlab-issue">
+    <div>
+      <b>#${issue.iid} ${escapeHtml(title)}</b>
+      <span>${escapeHtml(wbIssueMeta(issue))}</span>
+      <div class="wb-labels">${labels}</div>
+    </div>
+    <div class="wb-actions">
+      <button class="wb-mini" onclick="wbGitlabViewIssue('${escapeJsArg(project)}', ${issue.iid}, '${escapeJsArg(backTab || wbTab)}')">View</button>
+      <button class="wb-mini" onclick="wbGitlabPromptIssue(${issue.iid}, '${escapeJsArg(title)}')">Ask</button>
+      <button class="wb-mini danger" onclick="wbGitlabCloseIssueForProject('${escapeJsArg(project)}', ${issue.iid})">Close</button>
+    </div>
+  </div>`;
+}
+
+async function renderSprintPanel(){
+  wbSet('<div class="wb-empty">Loading current sprint…</div>');
+  const env = await wbCall('get_gitlab_env_status');
+  const config = await wbCall('get_gitlab_settings');
+  const settings = (config && config.settings) || {};
+  const group = settings.group || (env && env.default_group) || '';
+  const project = settings.project || (env && env.default_project) || '';
+  const sprint = await wbCall('list_gitlab_current_sprint', group || null, null, null);
+  const iteration = sprint && sprint.iteration;
+  const sprintTitle = iteration
+    ? `${escapeHtml(iteration.title || 'Current iteration')} · ${escapeHtml(iteration.start_date || '?')} to ${escapeHtml(iteration.due_date || '?')}`
+    : escapeHtml((sprint && (sprint.message || sprint.error)) || 'No current sprint loaded.');
+  const sprintRows = (sprint && sprint.issues || []).map(i => wbGitlabStoryRow(i, 'sprint')).join('')
+    || `<div class="wb-empty">${escapeHtml((sprint && sprint.error) || 'No open stories found in the current sprint.')}</div>`;
+  wbSet(`
+    <div class="wb-section-title">Current sprint</div>
+    <div class="wb-bar">
+      <div><b>${sprintTitle}</b><span>${group ? ' group ' + escapeHtml(group) : ' configure a GitLab group in the GitLab tab'}</span></div>
+      <div class="wb-actions"><button class="wb-mini" onclick="renderSprintPanel()">Refresh</button><button class="wb-mini" onclick="openWorkbench('gitlab')">Connection</button></div>
+    </div>
+    <div class="wb-list">${sprintRows}</div>
+    <div class="wb-section-title">Search stories</div>
+    <div class="wb-config">
+      <label>Search<input id="wbStorySearch" class="wb-input" placeholder="keywords, ID text, acceptance criteria"></label>
+      <label>Scope<select id="wbStoryScope" class="wb-input">
+        <option value="project" ${project ? 'selected' : ''}>Project</option>
+        <option value="group" ${!project && group ? 'selected' : ''}>Group</option>
+      </select></label>
+      <label>Target<input id="wbStoryTarget" class="wb-input" placeholder="project/group id or path" value="${escapeAttr(project || group)}"></label>
+      <label>State<select id="wbStoryState" class="wb-input">
+        <option value="opened">Open</option>
+        <option value="all">All</option>
+        <option value="closed">Closed</option>
+      </select></label>
+      <label>Labels<input id="wbStoryLabels" class="wb-input" placeholder="optional labels"></label>
+      <label>Assignee<input id="wbStoryAssignee" class="wb-input" placeholder="optional username"></label>
+      <div class="wb-actions"><button class="wb-primary" onclick="wbSprintSearch()">Search stories</button></div>
+    </div>
+    <div id="wbStoryResults"></div>`);
+}
+
+async function wbSprintSearch(){
+  const host = document.getElementById('wbStoryResults');
+  if(host) host.innerHTML = '<div class="wb-empty">Searching stories…</div>';
+  const q = ((document.getElementById('wbStorySearch') || {}).value || '').trim();
+  const scope = ((document.getElementById('wbStoryScope') || {}).value || 'project').trim();
+  const target = ((document.getElementById('wbStoryTarget') || {}).value || '').trim() || null;
+  const state = ((document.getElementById('wbStoryState') || {}).value || 'opened').trim();
+  const labels = ((document.getElementById('wbStoryLabels') || {}).value || '').trim() || null;
+  const assignee = ((document.getElementById('wbStoryAssignee') || {}).value || '').trim() || null;
+  const res = await wbCall('search_gitlab_stories', q, target, scope, state, labels, assignee);
+  const rows = (res.issues || []).map(i => wbGitlabStoryRow(i, 'sprint')).join('')
+    || `<div class="wb-empty">${escapeHtml(res.error || 'No stories found.')}</div>`;
+  if(host) host.innerHTML = `<div class="wb-section-title">Search results</div><div class="wb-list">${rows}</div>`;
+}
+
 async function renderGitlabPanel(){
   wbSet('<div class="wb-empty">Loading GitLab backlog…</div>');
   const env = await wbCall('get_gitlab_env_status');
@@ -200,6 +287,9 @@ async function renderGitlabPanel(){
   const target = project && project.project_target ? project.project_target : '';
   const urlValue = settings.url || (env && env.url_source && env.url_source !== 'default' ? env.base_url : '');
   const authType = settings.auth_type || (env && env.auth_type) || 'private-token';
+  const dataSource = settings.data_source || 'rest';
+  const mcpConfig = settings.mcp_config || '';
+  const mcpServer = settings.mcp_server || 'GitLab-MCP';
   const projectValue = settings.project || (env && env.default_project) || target || '';
   const groupValue = settings.group || (env && env.default_group) || '';
   const tokenPlaceholder = settings.token_configured
@@ -211,7 +301,7 @@ async function renderGitlabPanel(){
       ? `Not authenticated: ${escapeHtml(auth.error)}`
       : `Not authenticated. Set a token below or with GITLAB_TOKEN, GITLAB_PERSONAL_ACCESS_TOKEN, GL_TOKEN, or GITLAB_PRIVATE_TOKEN.`);
   const envLine = env && env.ok
-    ? `GitLab API: ${escapeHtml(env.api_url || env.base_url || '')} · Source: ${escapeHtml(env.url_source || 'default')} · Auth: ${escapeHtml(env.auth_type || 'private-token')} · Token: ${escapeHtml(env.token_source || 'not detected')}${env.default_project ? ' · Project: ' + escapeHtml(env.default_project) : ''}${env.default_group ? ' · Group: ' + escapeHtml(env.default_group) : ''}`
+    ? `GitLab API: ${escapeHtml(env.api_url || env.base_url || '')} · Data: ${escapeHtml(dataSource)} · Source: ${escapeHtml(env.url_source || 'default')} · Auth: ${escapeHtml(env.auth_type || 'private-token')} · Token: ${escapeHtml(env.token_source || 'not detected')}${env.default_project ? ' · Project: ' + escapeHtml(env.default_project) : ''}${env.default_group ? ' · Group: ' + escapeHtml(env.default_group) : ''}`
     : '';
   const envFile = (env && env.env_file) || {};
   const envFileLine = envFile.loaded_path
@@ -221,22 +311,15 @@ async function renderGitlabPanel(){
       : 'Env file: not configured');
   const backlog = await wbCall('list_gitlab_backlog', target || null, 'project', 'opened', null, null);
   const issues = (backlog.issues || []).map(issue => {
-    const labels = (issue.labels || []).map(l=>`<span class="wb-label">${escapeHtml(l)}</span>`).join('');
-    return `<div class="wb-gh-row wb-gitlab-issue">
-      <div>
-        <b>#${issue.iid} ${escapeHtml(issue.title || '')}</b>
-        <span>${escapeHtml(issue.issue_type || 'issue')} · ${escapeHtml(issue.state || '')} · ${escapeHtml(issue.updated_at || '')}</span>
-        <div class="wb-labels">${labels}</div>
-      </div>
-      <div class="wb-actions">
-        <button class="wb-mini" onclick="wbGitlabPromptIssue(${issue.iid}, '${escapeJsArg(issue.title || '')}')">Ask</button>
-        <button class="wb-mini" onclick="wbGitlabCloseIssue(${issue.iid})">Close</button>
-      </div>
-    </div>`;
+    return wbGitlabStoryRow(issue, 'gitlab');
   }).join('') || `<div class="wb-empty">${escapeHtml(backlog.error || 'No open backlog items found.')}</div>`;
   wbSet(`
     <div class="wb-section-title">GitLab connection</div>
     <div class="wb-config">
+      <label>Data source<select id="wbGitlabDataSource" class="wb-input">
+        <option value="rest" ${dataSource === 'rest' ? 'selected' : ''}>REST API</option>
+        <option value="mcp" ${dataSource === 'mcp' ? 'selected' : ''}>MCP server</option>
+      </select></label>
       <label>URL or API URL<input id="wbGitlabUrl" class="wb-input" placeholder="https://gitlab.example.com/api/v4" value="${escapeAttr(urlValue)}"></label>
       <label>Project<input id="wbGitlabDefaultProject" class="wb-input" placeholder="project id or group/project" value="${escapeAttr(projectValue)}"></label>
       <label>Group<input id="wbGitlabDefaultGroup" class="wb-input" placeholder="group id or path" value="${escapeAttr(groupValue)}"></label>
@@ -245,9 +328,12 @@ async function renderGitlabPanel(){
         <option value="bearer" ${authType === 'bearer' ? 'selected' : ''}>Bearer</option>
         <option value="both" ${authType === 'both' ? 'selected' : ''}>Both</option>
       </select></label>
+      <label>MCP config<input id="wbGitlabMcpConfig" class="wb-input" placeholder="C:\\Users\\...\\mcp-config.json" value="${escapeAttr(mcpConfig)}"></label>
+      <label>MCP server<input id="wbGitlabMcpServer" class="wb-input" placeholder="GitLab-MCP" value="${escapeAttr(mcpServer)}"></label>
       <label>Token<input id="wbGitlabToken" class="wb-input" type="password" placeholder="${escapeAttr(tokenPlaceholder)}"></label>
       <div class="wb-actions">
         <button class="wb-primary" onclick="wbGitlabSaveSettings()">Save connection</button>
+        <button class="wb-mini" onclick="wbGitlabTestMcp()">Test MCP</button>
         ${settings.token_configured ? '<button class="wb-mini danger" onclick="wbGitlabClearToken()">Clear token</button>' : ''}
       </div>
     </div>
@@ -279,6 +365,9 @@ async function wbGitlabSaveSettings(){
   const patch = {
     url: ((document.getElementById('wbGitlabUrl') || {}).value || '').trim(),
     auth_type: ((document.getElementById('wbGitlabAuthType') || {}).value || 'private-token').trim(),
+    data_source: ((document.getElementById('wbGitlabDataSource') || {}).value || 'rest').trim(),
+    mcp_config: ((document.getElementById('wbGitlabMcpConfig') || {}).value || '').trim(),
+    mcp_server: ((document.getElementById('wbGitlabMcpServer') || {}).value || '').trim(),
     project: ((document.getElementById('wbGitlabDefaultProject') || {}).value || '').trim(),
     group: ((document.getElementById('wbGitlabDefaultGroup') || {}).value || '').trim(),
   };
@@ -286,6 +375,16 @@ async function wbGitlabSaveSettings(){
   const r = await wbCall('update_gitlab_settings', patch);
   flashBanner(r && r.ok ? 'GitLab connection saved' : ((r && r.error) || 'Could not save GitLab connection'), r && r.ok ? 'ok' : 'warn');
   await renderGitlabPanel();
+}
+
+async function wbGitlabTestMcp(){
+  await wbGitlabSaveSettings();
+  const r = await wbCall('get_gitlab_mcp_status');
+  if(r && r.ok){
+    flashBanner(`MCP connected: ${r.server || 'GitLab'} (${(r.tools || []).length} tools)`, 'ok');
+  } else {
+    flashBanner((r && r.error) || 'MCP connection failed', 'warn');
+  }
 }
 
 function wbGitlabClearToken(){
@@ -320,6 +419,38 @@ async function wbGitlabCloseIssue(iid){
   const r = await wbCall('update_gitlab_issue', target, iid, {state_event:'close'});
   flashBanner(r.ok ? 'Issue closed' : (r.error || 'Could not update issue'), r.ok ? 'ok' : 'warn');
   await renderGitlabPanel();
+}
+
+async function wbGitlabCloseIssueForProject(project, iid){
+  const target = project || null;
+  const r = await wbCall('update_gitlab_issue', target, iid, {state_event:'close'});
+  flashBanner(r.ok ? 'Issue closed' : (r.error || 'Could not update issue'), r.ok ? 'ok' : 'warn');
+  await refreshWorkbench();
+}
+
+async function wbGitlabViewIssue(project, iid, backTab){
+  wbSet('<div class="wb-empty">Loading story…</div>');
+  const r = await wbCall('get_gitlab_issue', project || null, iid);
+  if(!r || !r.ok){ wbSet(wbErr(r)); return; }
+  const issue = r.issue || {};
+  const labels = (issue.labels || []).map(l=>`<span class="wb-label">${escapeHtml(l)}</span>`).join('');
+  const milestone = issue.milestone && issue.milestone.title ? ` · milestone ${escapeHtml(issue.milestone.title)}` : '';
+  const iteration = issue.iteration && issue.iteration.title ? ` · iteration ${escapeHtml(issue.iteration.title)}` : '';
+  wbSet(`
+    <div class="wb-bar">
+      <div><b>#${escapeHtml(issue.iid || iid)} ${escapeHtml(issue.title || '')}</b><span>${escapeHtml(wbIssueMeta(issue))}${milestone}${iteration}</span></div>
+      <div class="wb-actions">
+        <button class="wb-mini" onclick="openWorkbench('${escapeJsArg(backTab || 'sprint')}')">Back</button>
+        ${issue.web_url ? `<a class="wb-mini" href="${escapeAttr(issue.web_url)}" target="_blank" rel="noopener">Open</a>` : ''}
+      </div>
+    </div>
+    <div class="wb-labels">${labels}</div>
+    <div class="wb-section-title">Description</div>
+    <pre class="wb-story-desc">${escapeHtml(issue.description || 'No description.')}</pre>
+    <div class="wb-actions">
+      <button class="wb-primary" onclick="wbGitlabPromptIssue(${issue.iid || iid}, '${escapeJsArg(issue.title || '')}')">Ask Copilot</button>
+      <button class="wb-mini danger" onclick="wbGitlabCloseIssueForProject('${escapeJsArg(issue.project_id || project || '')}', ${issue.iid || iid})">Close story</button>
+    </div>`);
 }
 
 function wbGitlabPromptIssue(iid, title){
