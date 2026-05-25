@@ -1,5 +1,6 @@
 // ===== Conversation state / history =====
 let conversations = [];     // [{id,title,updated,cwd}] for the sidebar
+let projects = [];          // durable project records from SQLite
 let currentConvId = null;
 let currentMessages = [];   // [{role:'user'|'assistant', content}]
 let autoApprove = false;
@@ -11,6 +12,10 @@ async function loadConversations(){
   if(!window.pywebview || !window.pywebview.api){ renderSidebar(); return; }
   try{ conversations = (await window.pywebview.api.list_conversations()) || []; }
   catch(e){ conversations = []; }
+  try{
+    const r = await window.pywebview.api.list_projects();
+    projects = (r && r.projects) || [];
+  }catch(e){ projects = []; }
   renderSidebar();
 }
 
@@ -35,13 +40,25 @@ function renderSidebar(){
   const items = q ? conversations.filter(c=>(c.title||'').toLowerCase().includes(q)) : conversations.slice();
   // No placeholder draft: a chat only appears once it has a real exchange (saved
   // after the assistant replies), so navigating away never drops a phantom group.
-  if(!items.length){ list.innerHTML = '<div class="sb-empty">'+(q?'No matches':'No conversations yet')+'</div>'; return; }
-  // group by working folder (active folder first, then by recency)
+  if(!items.length && !projects.length){ list.innerHTML = '<div class="sb-empty">'+(q?'No matches':'No projects yet')+'</div>'; return; }
+  // group by durable project where available, falling back to working folder.
   const groups = [], idx = {};
-  items.forEach(c=>{ const k = c.cwd || ''; if(idx[k] === undefined){ idx[k] = groups.length; groups.push({cwd:k, items:[]}); } groups[idx[k]].items.push(c); });
+  projects.forEach(p=>{
+    const k = p.id || p.main_repo_path || '';
+    idx[k] = groups.length;
+    groups.push({key:k, cwd:p.main_repo_path, name:p.name, items:[]});
+  });
+  items.forEach(c=>{
+    const k = c.project_id || c.cwd || '';
+    if(idx[k] === undefined){
+      idx[k] = groups.length;
+      groups.push({key:k, cwd:c.cwd || '', name:c.project_name || projName(c.cwd), items:[]});
+    }
+    groups[idx[k]].items.push(c);
+  });
   const folderIcon = '<svg class="proj-ico" viewBox="0 0 16 16"><path d="M1.75 2.5A1.75 1.75 0 000 4.25v7.5C0 12.99.78 14 1.75 14h12.5A1.75 1.75 0 0016 12.25V5.75A1.75 1.75 0 0014.25 4H7.5L6 2.5z"/></svg>';
   list.innerHTML = groups.map(g=>{
-    const head = `<div class="proj-head" title="${escapeAttr(g.cwd||'')}">${folderIcon}<span>${escapeHtml(projName(g.cwd))}</span></div>`;
+    const head = `<div class="proj-head" title="${escapeAttr(g.cwd||'')}">${folderIcon}<span>${escapeHtml(g.name || projName(g.cwd))}</span></div>`;
     const rows = g.items.map(c=>{
       const del = c._draft ? '' :
         `<span class="ci-del" title="Delete conversation" onclick="event.stopPropagation();deleteConversation('${c.id}')">&times;</span>`;
@@ -49,7 +66,7 @@ function renderSidebar(){
          <span class="ci-title">${escapeHtml(c.title)}</span>
          <span class="ci-time">${relTime(c.updated)}</span>
          ${del}</div>`;
-    }).join('');
+    }).join('') || '<div class="sb-empty sb-project-empty">No sessions yet</div>';
     return head + rows;
   }).join('');
 }
@@ -185,6 +202,7 @@ async function pickFolder(){
   let res; try{ res = await window.pywebview.api.set_working_dir(f.path); }catch(e){ return; }
   if(res && res.ok){
     setWdDisplay(f.path);
+    await loadConversations();
     newChat();   // session is recreated for the new folder
     showBanner('ok','Copilot is now working in ' + f.path);
     setTimeout(()=>{ const bn=document.getElementById('bannerHost'); if(bn) bn.innerHTML=''; }, 4000);
@@ -200,6 +218,7 @@ async function newProjectScratch(){
   let r; try{ r = await window.pywebview.api.new_project(); }catch(e){ return; }
   if(r && r.ok){
     setWdDisplay(r.path);
+    await loadConversations();
     newChat();
     showBanner('ok','New project created at ' + r.path);
     setTimeout(()=>{ const bn=document.getElementById('bannerHost'); if(bn) bn.innerHTML=''; }, 5000);

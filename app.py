@@ -65,7 +65,18 @@ _dbg("webview imported")
 # unaffected -- raising the logger level stops that record from being formatted.
 logging.getLogger("pywebview").setLevel(logging.CRITICAL)
 
+from activity import ActivityLog
+from automation_service import AutomationService
+from file_service import FileService
+from github_service import GitHubService
+import git_service
+from project_service import ProjectService
+from session_manager import SessionManager
+from settings_service import SettingsService
+from storage import Storage
 from terminal import Terminal
+from workflow_service import WorkflowService
+from workspace_service import WorkspaceService
 # NOTE: copilot_backend (which imports the heavy Copilot SDK) is imported lazily
 # inside start(), so the window + "Connecting…" spinner appear immediately instead
 # of waiting on the SDK import — especially noticeable on a cold first run.
@@ -75,7 +86,7 @@ INDEX = os.path.join(HERE, "index.html")
 
 # Conversations persist here so they survive restarts (kept out of the project
 # dir / git, under the user's home).
-HISTORY_DIR = os.path.join(os.path.expanduser("~"), ".copilot-desktop")
+HISTORY_DIR = os.environ.get("COPILOT_DESKTOP_HOME") or os.path.join(os.path.expanduser("~"), ".copilot-desktop")
 HISTORY_FILE = os.path.join(HISTORY_DIR, "history.json")
 PREFS_FILE = os.path.join(HISTORY_DIR, "prefs.json")  # small app prefs, e.g. last working folder
 
@@ -190,6 +201,19 @@ class Api:
     def __init__(self):
         self.window = None
         self.backend: CopilotBackend | None = None
+        self.storage = Storage()
+        self.activity = ActivityLog(self.storage)
+        self.projects = ProjectService(self.storage)
+        self.workspaces = WorkspaceService(self.storage)
+        self.sessions = SessionManager(self.storage, self.projects, self.workspaces, self.activity)
+        self.settings = SettingsService(self.storage)
+        self.files = FileService()
+        self.github = GitHubService()
+        self.automations = AutomationService(self.storage)
+        self.workflows = WorkflowService(self.storage, self.activity)
+        self.active_project_id: str | None = None
+        self.active_workspace_id: str | None = None
+        self.active_session_id: str | None = None
         # Integrated terminals (PowerShell on Windows). Multiple tabs, each its own
         # shell; a new tab opens in the active project folder. Keyed by string id.
         self.terminals: dict[str, Terminal] = {}
@@ -243,6 +267,46 @@ class Api:
         self.terminals[tid] = t
         return tid
 
+    def _activate_path(self, path: str):
+        """Ensure path has project/workspace records and mark it as active."""
+        workspace = self.sessions.ensure_workspace_for_path(path)
+        self.active_project_id = workspace["project_id"]
+        self.active_workspace_id = workspace["id"]
+        return workspace
+
+    def _active_workspace(self):
+        if self.active_workspace_id:
+            ws = self.workspaces.get_workspace(self.active_workspace_id)
+            if ws:
+                return ws
+        path = (self.backend.working_dir if self.backend else None) or _load_prefs().get("workdir") or os.path.expanduser("~")
+        return self._activate_path(path)
+
+    def _handle_copilot_done(self):
+        if self.active_session_id:
+            try:
+                session = self.sessions.get_session(self.active_session_id)
+                self.sessions.set_running(self.active_session_id, False)
+                if session:
+                    self.activity.add(
+                        "chat",
+                        "Assistant response completed",
+                        session.get("title"),
+                        workspace_id=session["workspace_id"],
+                        session_id=self.active_session_id,
+                    )
+            except Exception:
+                pass
+        self._js("onCopilotDone")
+
+    def _handle_copilot_error(self, message):
+        if self.active_session_id:
+            try:
+                self.sessions.set_running(self.active_session_id, False, interrupted=True, reason=str(message))
+            except Exception:
+                pass
+        self._js("onCopilotError", message)
+
     # ----- exposed to the UI -----
 
     def start(self, github_token: str | None = None):
@@ -260,12 +324,17 @@ class Api:
                    or os.path.expanduser("~"))
         if not (workdir and os.path.isdir(workdir)):   # saved folder gone? fall back to home
             workdir = os.path.expanduser("~")
+        try:
+            self._activate_path(workdir)
+            self.sessions.migrate_legacy_history(HISTORY_FILE, workdir)
+        except Exception as e:
+            _dbg("start(): storage/session bootstrap failed:", repr(e))
         from copilot_backend import CopilotBackend   # lazy: heavy SDK import, kept off the UI startup path
         self.backend = CopilotBackend(github_token=token, working_dir=workdir)
         self.backend.set_handlers(
             on_delta=lambda c: self._js("onCopilotDelta", c),
-            on_done=lambda: self._js("onCopilotDone"),
-            on_error=lambda m: self._js("onCopilotError", m),
+            on_done=self._handle_copilot_done,
+            on_error=self._handle_copilot_error,
             on_activity=lambda d: self._js("onCopilotActivity", d),
             on_permission=lambda p: self._js("onPermissionRequest", p),
         )
@@ -290,13 +359,37 @@ class Api:
             _dbg("start(): EXCEPTION:", repr(e))
             return {"ok": False, "error": str(e)}
 
-    def send(self, prompt: str, attachments=None):
+    def send(self, prompt: str, attachments=None, session_id=None):
         if not self.backend:
             return {"ok": False, "error": "Backend not started"}
         try:
+            if session_id:
+                try:
+                    session = self.sessions.get_session(session_id)
+                    if not session:
+                        workspace = self._active_workspace()
+                        self.sessions.create_session(workspace["id"], "chat", (prompt or "New chat")[:60], session_id=session_id)
+                        session = self.sessions.get_session(session_id)
+                    if session:
+                        self.active_session_id = session_id
+                        self.sessions.set_running(session_id, True)
+                        self.activity.add(
+                            "chat",
+                            "User message",
+                            (prompt or "")[:120],
+                            workspace_id=session["workspace_id"],
+                            session_id=session_id,
+                        )
+                except Exception:
+                    pass
             self._run(self.backend.send(prompt, attachments))
             return {"ok": True}
         except Exception as e:
+            if session_id:
+                try:
+                    self.sessions.set_running(session_id, False, interrupted=True, reason=str(e))
+                except Exception:
+                    pass
             self._js("onCopilotError", str(e))
             return {"ok": False, "error": str(e)}
 
@@ -418,12 +511,20 @@ class Api:
                 n = f"{path}-{i}"; i += 1
             path = n
             os.makedirs(path)
+            workspace = self._activate_path(path)
             self._run(self.backend.set_working_dir(path))
             try:
                 prefs = _load_prefs(); prefs["workdir"] = path; _save_prefs(prefs)
             except Exception:
                 pass
-            return {"ok": True, "path": path}
+            self.activity.add(
+                "project",
+                "Created project",
+                path,
+                project_id=workspace["project_id"],
+                workspace_id=workspace["id"],
+            )
+            return {"ok": True, "path": path, "project_id": workspace["project_id"], "workspace_id": workspace["id"]}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -434,13 +535,513 @@ class Api:
         if not self.backend:
             return {"ok": False, "error": "Backend not started"}
         try:
+            workspace = self._activate_path(path)
             self._run(self.backend.set_working_dir(path))
             if remember:
                 try:
                     prefs = _load_prefs(); prefs["workdir"] = path; _save_prefs(prefs)
                 except Exception:
                     pass
-            return {"ok": True, "workdir": path}
+            self.activity.add(
+                "workspace",
+                "Switched workspace",
+                path,
+                project_id=workspace["project_id"],
+                workspace_id=workspace["id"],
+            )
+            return {"ok": True, "workdir": path, "project_id": workspace["project_id"], "workspace_id": workspace["id"]}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    # ----- project/workspace/session APIs (new model, old UI still compatible) -----
+
+    def list_projects(self):
+        return {"ok": True, "projects": self.projects.list_projects()}
+
+    def create_project(self, path):
+        try:
+            project = self.projects.create_project(path)
+            workspace = self.workspaces.ensure_folder_workspace(project["id"], project["main_repo_path"])
+            self.active_project_id = project["id"]
+            self.active_workspace_id = workspace["id"]
+            self.activity.add(
+                "project",
+                "Added project",
+                project["main_repo_path"],
+                project_id=project["id"],
+                workspace_id=workspace["id"],
+            )
+            return {"ok": True, "project": project, "workspace": workspace}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_project(self, project_id):
+        project = self.projects.get_project(project_id)
+        return {"ok": bool(project), "project": project}
+
+    def archive_project(self, project_id):
+        try:
+            return self.projects.archive_project(project_id)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def list_workspaces(self, project_id=None):
+        try:
+            project_id = project_id or self.active_project_id
+            if not project_id:
+                return {"ok": True, "workspaces": []}
+            return {"ok": True, "workspaces": self.workspaces.list_workspaces(project_id)}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "workspaces": []}
+
+    def create_workspace(self, project_id=None, mode="folder", options=None):
+        try:
+            options = options or {}
+            project_id = project_id or self.active_project_id
+            if not project_id:
+                raise ValueError("No project selected")
+            project = self.projects.get_project(project_id)
+            if not project:
+                raise ValueError("Project not found")
+            path = options.get("path") or project["main_repo_path"]
+            workspace = self.workspaces.create_workspace(
+                project_id,
+                mode or "folder",
+                path=path,
+                name=options.get("name"),
+                branch=options.get("branch"),
+                base_branch=options.get("base_branch"),
+                source_issue_number=options.get("source_issue_number"),
+                source_pr_number=options.get("source_pr_number"),
+                metadata=options.get("metadata"),
+            )
+            self.active_project_id = project_id
+            self.active_workspace_id = workspace["id"]
+            self.activity.add(
+                "workspace",
+                "Created workspace",
+                workspace["name"],
+                project_id=project_id,
+                workspace_id=workspace["id"],
+            )
+            return {"ok": True, "workspace": workspace}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_workspace(self, workspace_id=None):
+        workspace = self.workspaces.get_workspace(workspace_id or self.active_workspace_id)
+        return {"ok": bool(workspace), "workspace": workspace}
+
+    def set_active_workspace(self, workspace_id):
+        try:
+            workspace = self.workspaces.get_workspace(workspace_id)
+            if not workspace:
+                return {"ok": False, "error": "Workspace not found"}
+            self.active_project_id = workspace["project_id"]
+            self.active_workspace_id = workspace["id"]
+            if self.backend:
+                self._run(self.backend.set_working_dir(workspace["path"]))
+            return {"ok": True, "workspace": workspace}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def list_sessions(self, workspace_id=None):
+        try:
+            workspace_id = workspace_id or self.active_workspace_id
+            if not workspace_id:
+                return {"ok": True, "sessions": []}
+            return {"ok": True, "sessions": self.sessions.list_sessions(workspace_id)}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "sessions": []}
+
+    def create_session(self, workspace_id=None, session_type="chat", title=None, source=None):
+        try:
+            workspace_id = workspace_id or self.active_workspace_id or self._active_workspace()["id"]
+            session = self.sessions.create_session(
+                workspace_id,
+                session_type or "chat",
+                title or "New chat",
+                metadata={"source": source} if source else {},
+            )
+            return {"ok": True, "session": session}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_session(self, session_id):
+        session = self.sessions.get_session(session_id)
+        return {"ok": bool(session), "session": session,
+                "messages": self.sessions.get_messages(session_id) if session else []}
+
+    def archive_session(self, session_id):
+        try:
+            return self.sessions.archive_session(session_id)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def list_activity(self, workspace_id=None):
+        try:
+            workspace_id = workspace_id or self.active_workspace_id
+            return {"ok": True, "activity": self.activity.list_workspace(workspace_id) if workspace_id else []}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "activity": []}
+
+    def list_project_activity(self, project_id=None):
+        try:
+            project_id = project_id or self.active_project_id
+            return {"ok": True, "activity": self.activity.list_project(project_id) if project_id else []}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "activity": []}
+
+    def get_git_status(self, workspace_id=None):
+        try:
+            workspace = self.workspaces.get_workspace(workspace_id or self.active_workspace_id)
+            if not workspace:
+                return {"ok": False, "error": "Workspace not found"}
+            return git_service.get_status(workspace["path"])
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def _workspace_for_api(self, workspace_id=None):
+        workspace = self.workspaces.get_workspace(workspace_id or self.active_workspace_id)
+        if not workspace:
+            raise ValueError("Workspace not found")
+        return workspace
+
+    def _project_for_api(self, project_id=None):
+        project = self.projects.get_project(project_id or self.active_project_id)
+        if not project:
+            raise ValueError("Project not found")
+        return project
+
+    def _repo_context_for_project(self, project_id=None):
+        project = self._project_for_api(project_id)
+        owner = project.get("github_owner")
+        repo = project.get("github_repo")
+        if not (owner and repo):
+            desc = git_service.describe_repository(project["main_repo_path"])
+            owner, repo = desc.get("owner"), desc.get("repo")
+        if not (owner and repo):
+            raise ValueError("Project is not connected to a GitHub repository")
+        return project, owner, repo
+
+    def get_changed_files(self, workspace_id=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            return git_service.get_changed_files(workspace["path"])
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_file_diff(self, workspace_id=None, path=None, staged=False):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            return git_service.get_file_diff(workspace["path"], path, staged)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def stage_file(self, workspace_id=None, path=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            res = git_service.stage_file(workspace["path"], path)
+            self.activity.add("git", "Staged file", path, project_id=workspace["project_id"], workspace_id=workspace["id"])
+            return res
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def unstage_file(self, workspace_id=None, path=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            res = git_service.unstage_file(workspace["path"], path)
+            self.activity.add("git", "Unstaged file", path, project_id=workspace["project_id"], workspace_id=workspace["id"])
+            return res
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def stage_all(self, workspace_id=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            res = git_service.stage_all(workspace["path"])
+            self.activity.add("git", "Staged all changes", None, project_id=workspace["project_id"], workspace_id=workspace["id"])
+            return res
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def unstage_all(self, workspace_id=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            res = git_service.unstage_all(workspace["path"])
+            self.activity.add("git", "Unstaged all changes", None, project_id=workspace["project_id"], workspace_id=workspace["id"])
+            return res
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def discard_file(self, workspace_id=None, path=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            res = git_service.discard_file(workspace["path"], path)
+            self.activity.add("git", "Discarded file changes", path, project_id=workspace["project_id"], workspace_id=workspace["id"])
+            return res
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def commit(self, workspace_id=None, summary="", description=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            res = git_service.commit(workspace["path"], summary, description)
+            if res.get("ok"):
+                self.activity.add("git", "Created commit", summary, project_id=workspace["project_id"], workspace_id=workspace["id"])
+            return res
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def list_branches(self, workspace_id=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            return git_service.list_branches(workspace["path"])
+        except Exception as e:
+            return {"ok": False, "error": str(e), "branches": []}
+
+    def create_branch(self, workspace_id=None, branch_name=None, base_branch=None, checkout=True):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            res = git_service.create_branch(workspace["path"], branch_name, base_branch, checkout)
+            if res.get("ok"):
+                self.activity.add("git", "Created branch", branch_name, project_id=workspace["project_id"], workspace_id=workspace["id"])
+            return res
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def checkout_branch(self, workspace_id=None, branch_name=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            res = git_service.checkout_branch(workspace["path"], branch_name)
+            if res.get("ok"):
+                self.activity.add("git", "Checked out branch", branch_name, project_id=workspace["project_id"], workspace_id=workspace["id"])
+            return res
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def rename_branch(self, workspace_id=None, old_name=None, new_name=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            return git_service.rename_branch(workspace["path"], old_name, new_name)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def delete_branch(self, workspace_id=None, branch_name=None, force=False):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            return git_service.delete_branch(workspace["path"], branch_name, force)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def fetch(self, workspace_id=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            res = git_service.fetch(workspace["path"])
+            self.activity.add("git", "Fetched repository", None, project_id=workspace["project_id"], workspace_id=workspace["id"])
+            return res
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def pull(self, workspace_id=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            res = git_service.pull(workspace["path"])
+            self.activity.add("git", "Pulled repository", None, project_id=workspace["project_id"], workspace_id=workspace["id"])
+            return res
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def push(self, workspace_id=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            res = git_service.push(workspace["path"])
+            self.activity.add("git", "Pushed repository", None, project_id=workspace["project_id"], workspace_id=workspace["id"])
+            return res
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def sync(self, workspace_id=None):
+        pulled = self.pull(workspace_id)
+        if not pulled.get("ok"):
+            return pulled
+        return self.push(workspace_id)
+
+    def get_commit_history(self, workspace_id=None, limit=50):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            return git_service.get_commit_history(workspace["path"], limit)
+        except Exception as e:
+            return {"ok": False, "error": str(e), "commits": []}
+
+    def get_commit_details(self, workspace_id=None, sha=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            return git_service.get_commit_details(workspace["path"], sha)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def create_worktree(self, project_id=None, branch_name=None, base_branch=None, path=None):
+        try:
+            project = self._project_for_api(project_id)
+            if not path:
+                base = os.path.dirname(project["main_repo_path"])
+                path = os.path.join(base, branch_name or ("worktree-" + time.strftime("%Y%m%d-%H%M%S")))
+            res = git_service.create_worktree(project["main_repo_path"], path, branch_name, base_branch)
+            if res.get("ok"):
+                workspace = self.workspaces.create_workspace(
+                    project["id"],
+                    "worktree",
+                    path=res["path"],
+                    branch=branch_name,
+                    base_branch=base_branch,
+                )
+                self.activity.add("workspace", "Created worktree workspace", branch_name, project_id=project["id"], workspace_id=workspace["id"])
+                res["workspace"] = workspace
+            return res
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def list_workspace_files(self, workspace_id=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            return self.files.list_tree(workspace["path"])
+        except Exception as e:
+            return {"ok": False, "error": str(e), "files": []}
+
+    def search_workspace_files(self, workspace_id=None, query=""):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            return self.files.search(workspace["path"], query)
+        except Exception as e:
+            return {"ok": False, "error": str(e), "files": []}
+
+    def read_workspace_file(self, workspace_id=None, path=None, max_bytes=400000):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            return self.files.read_file(workspace["path"], path, max_bytes)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_github_auth_status(self):
+        return self.github.auth_status()
+
+    def get_repo_context(self, project_id=None):
+        try:
+            project, owner, repo = self._repo_context_for_project(project_id)
+            meta = self.github.get_repo(owner, repo)
+            return {"ok": True, "project": project, "owner": owner, "repo": repo, "github": meta}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def list_issues(self, project_id=None):
+        try:
+            _, owner, repo = self._repo_context_for_project(project_id)
+            return self.github.list_issues(owner, repo)
+        except Exception as e:
+            return {"ok": False, "error": str(e), "issues": []}
+
+    def list_pull_requests(self, project_id=None):
+        try:
+            _, owner, repo = self._repo_context_for_project(project_id)
+            return self.github.list_pull_requests(owner, repo)
+        except Exception as e:
+            return {"ok": False, "error": str(e), "pull_requests": []}
+
+    def get_pull_request(self, project_id=None, number=None):
+        try:
+            _, owner, repo = self._repo_context_for_project(project_id)
+            return self.github.get_pull_request(owner, repo, number)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def create_pull_request(self, workspace_id=None, title="", body="", base=None, head=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            project, owner, repo = self._repo_context_for_project(workspace["project_id"])
+            base = base or project.get("default_branch") or workspace.get("base_branch") or "main"
+            head = head or git_service.get_current_branch(workspace["path"])
+            res = self.github.create_pull_request(owner, repo, title, body, base, head)
+            if res.get("ok"):
+                self.activity.add("github", "Created pull request", title, project_id=project["id"], workspace_id=workspace["id"])
+            return res
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def open_issue_session(self, project_id=None, number=None):
+        try:
+            project = self._project_for_api(project_id)
+            workspace = self.workspaces.ensure_folder_workspace(project["id"], project["main_repo_path"])
+            session = self.sessions.create_session(workspace["id"], "issue", f"Issue #{number}", metadata={"issue_number": number})
+            return {"ok": True, "session": session, "workspace": workspace}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def open_pr_session(self, project_id=None, number=None):
+        try:
+            project = self._project_for_api(project_id)
+            workspace = self.workspaces.ensure_folder_workspace(project["id"], project["main_repo_path"])
+            session = self.sessions.create_session(workspace["id"], "pull_request", f"PR #{number}", metadata={"pull_request_number": number})
+            return {"ok": True, "session": session, "workspace": workspace}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def list_workflows(self, project_id=None):
+        try:
+            project = self._project_for_api(project_id)
+            return {"ok": True, "workflows": self.workflows.list_workflows(project["id"])}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "workflows": []}
+
+    def save_workflow(self, project_id=None, workflow=None):
+        try:
+            project = self._project_for_api(project_id)
+            return {"ok": True, "workflow": self.workflows.save_workflow(project["id"], workflow or {})}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def run_workflow(self, workspace_id=None, workflow_id=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            return self.workflows.run_workflow(workflow_id, workspace)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def list_workflow_runs(self, workspace_id=None):
+        try:
+            workspace = self._workspace_for_api(workspace_id)
+            return {"ok": True, "runs": self.workflows.list_workflow_runs(workspace["id"])}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "runs": []}
+
+    def list_session_automations(self, session_id=None):
+        try:
+            session_id = session_id or self.active_session_id
+            return {"ok": True, "automations": self.automations.list_session_automations(session_id) if session_id else []}
+        except Exception as e:
+            return {"ok": False, "error": str(e), "automations": []}
+
+    def save_session_automation(self, session_id=None, automation=None):
+        try:
+            session_id = session_id or self.active_session_id
+            if not session_id:
+                raise ValueError("No session selected")
+            return {"ok": True, "automation": self.automations.save_session_automation(session_id, automation or {})}
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def delete_session_automation(self, automation_id=None):
+        try:
+            return self.automations.delete_session_automation(automation_id)
+        except Exception as e:
+            return {"ok": False, "error": str(e)}
+
+    def get_app_settings(self):
+        return {"ok": True, "settings": self.settings.get_settings()}
+
+    def update_app_settings(self, patch=None):
+        try:
+            return {"ok": True, "settings": self.settings.update_settings(patch or {})}
         except Exception as e:
             return {"ok": False, "error": str(e)}
 
@@ -645,49 +1246,26 @@ class Api:
         # First call marks when the JS bridge became ready (~pywebviewready). The gap
         # from "main: webview.start()" to here is pure WebView2 init + page load.
         _dbg("api.list_conversations (bridge ready)")
-        convs = sorted(
-            _load_history()["conversations"],
-            key=lambda c: c.get("updated", 0),
-            reverse=True,
-        )
-        return [
-            {"id": c["id"], "title": c.get("title", "Untitled"),
-             "updated": c.get("updated", 0), "cwd": c.get("cwd")}
-            for c in convs
-        ]
+        try:
+            path = (self.backend.working_dir if self.backend else None) or _load_prefs().get("workdir") or os.path.expanduser("~")
+            self.sessions.migrate_legacy_history(HISTORY_FILE, path)
+        except Exception:
+            pass
+        return self.sessions.list_conversations()
 
     def get_conversation(self, conv_id: str):
-        for c in _load_history()["conversations"]:
-            if c["id"] == conv_id:
-                return c
-        return None
+        return self.sessions.get_conversation(conv_id)
 
     def save_conversation(self, conv_id: str, title: str, messages: list):
-        import time
-
-        data = _load_history()
-        now = time.time()
-        cwd = self.backend.working_dir if self.backend else None
-        for c in data["conversations"]:
-            if c["id"] == conv_id:
-                c.update(title=title, messages=messages, updated=now, cwd=cwd)
-                break
-        else:
-            data["conversations"].append(
-                {"id": conv_id, "title": title, "messages": messages,
-                 "created": now, "updated": now, "cwd": cwd}
-            )
-        _save_history(data)
-        return {"ok": True}
+        cwd = (self.backend.working_dir if self.backend else None) or _load_prefs().get("workdir") or os.path.expanduser("~")
+        return self.sessions.save_conversation(conv_id, title, messages, cwd)
 
     def delete_conversation(self, conv_id: str):
-        data = _load_history()
-        data["conversations"] = [c for c in data["conversations"] if c["id"] != conv_id]
-        _save_history(data)
-        return {"ok": True}
+        return self.sessions.archive_session(conv_id)
 
     def clear_history(self):
-        _save_history({"conversations": []})
+        for conv in self.sessions.list_conversations():
+            self.sessions.archive_session(conv["id"])
         return {"ok": True}
 
 

@@ -12,6 +12,15 @@ so there is **no compiler and no admin install required**.
   Open it directly in a browser to see a **demo** with simulated replies.
 - `copilot_backend.py` — async wrapper around the Copilot SDK (auth, session, streaming).
 - `app.py` — the pywebview desktop shell; bridges the JS UI to the backend.
+- `storage.py` — SQLite schema and migrations for projects, workspaces, sessions,
+  messages, activity, GitHub context, reviews, workflows, and attachments.
+- `project_service.py`, `workspace_service.py`, `session_manager.py`,
+  `activity.py`, `git_service.py`, `github_service.py`, `file_service.py`,
+  `workflow_service.py`, `automation_service.py`, `settings_service.py` —
+  backend services that move the app toward a Copilot App-style
+  project/workspace/session model while preserving the current chat UI.
+- `js/workbench.js` — the right-side workspace panel for Changes, Files,
+  Activity, GitHub context, Workflows, and Terminal controls.
 - `requirements.txt` — Python dependencies.
 
 ## Run it (non-admin, no compiler)
@@ -32,10 +41,19 @@ From this folder, using your portable Python:
 ```
 python.exe -m pip install -r requirements.txt
 ```
-On Windows this also pulls in `pythonnet`, which lets pywebview drive the
-Edge **WebView2** runtime. WebView2 ships with Windows 11. If it's somehow
+On Windows, `requirements.txt` installs `pythonnet`, which lets pywebview drive
+the Edge **WebView2** runtime. WebView2 ships with Windows 11. If it's somehow
 missing, install the **Evergreen WebView2 Runtime** — the per-user installer
-needs no admin rights.
+needs no admin rights. The Linux-only Qt packages in `requirements.txt` are
+guarded with environment markers, so they are skipped on Windows.
+
+On Linux, `requirements.txt` installs the Qt backend that pywebview needs
+(`qtpy`, `PyQt6`, and `PyQt6-WebEngine`). If your distro blocks Qt WebEngine
+because of missing system libraries, install the distro Qt/XCB packages and run
+with:
+```
+PYWEBVIEW_GUI=qt python app.py
+```
 
 ### 3. Authenticate with Copilot
 The SDK uses your own Copilot identity (works with a **Copilot Business** seat).
@@ -56,6 +74,10 @@ steps — the SDK manages the token exchange for you.
 ### 4. Launch
 ```
 python.exe app.py
+```
+On Windows 11 you can also use:
+```
+run.bat
 ```
 A native window opens. If auth succeeds you'll see a green
 "Connected to GitHub Copilot" banner and replies stream live. If it fails, the
@@ -126,6 +148,13 @@ Copilot SDK subprocess) uses standard proxy environment variables —
 - Tool permissions default to asking before file edits, shell commands, URL
   access, and MCP tool use. Reads are allowed, and Plan mode rejects actions
   that change state.
+- Chat history is now stored in `~/.copilot-desktop/data.db`. On first run, the
+  old `~/.copilot-desktop/history.json` file is imported into session/message
+  tables and left in place with an extra timestamped backup.
+- For isolated testing, set `COPILOT_DESKTOP_HOME` to point storage at a
+  temporary app-data folder.
+- The workspace workbench uses Git from `PATH`. GitHub panels use `GITHUB_TOKEN`,
+  `GH_TOKEN`, or `gh auth token` and degrade gracefully when unauthenticated.
 - To ship as a single `.exe`, run PyInstaller against `app.py` — still no admin,
   still no compiler toolchain needed.
 - Model list is pulled live from `client.list_models()`; the picker in the top

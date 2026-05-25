@@ -104,7 +104,7 @@ function sendMessage(){
     // Real Copilot. Deltas arrive via window.onCopilotDelta().
     curTarget = target; curBuf = "";
     setStreaming(true);
-    window.pywebview.api.send(text, atts);
+    window.pywebview.api.send(text, atts, currentConvId);
   } else {
     // Demo fallback (no backend present).
     setTimeout(()=>streamText(target, buildReply()), 450);
