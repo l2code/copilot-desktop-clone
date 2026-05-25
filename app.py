@@ -35,9 +35,14 @@ os.environ.setdefault("QT_API", "pyqt6")
 # doesn't hang on a slow/blocked network. Read by WebView2 at environment creation.
 os.environ.setdefault(
     "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
-    "--no-first-run --no-default-browser-check --disable-background-networking "
-    "--disable-component-update --disable-sync --disable-domain-reliability "
-    "--disable-client-side-phishing-detection --disable-breakpad "
+    # --no-proxy-server: the UI is a local page, so the WebView never needs the
+    # network. Behind a corporate proxy its background probes otherwise hang on the
+    # proxy (~25s TCP timeout, sometimes indefinite); going direct makes them fail
+    # fast. (Copilot traffic is unaffected — it runs in a separate process that uses
+    # the proxy env vars.)
+    "--no-proxy-server --no-first-run --no-default-browser-check "
+    "--disable-background-networking --disable-component-update --disable-sync "
+    "--disable-domain-reliability --disable-client-side-phishing-detection --disable-breakpad "
     "--disable-features=msSmartScreenProtection,OptimizationGuideModelDownloading,"
     "OptimizationHints,Translate,InterestFeedContentSuggestions,MediaRouter",
 )
