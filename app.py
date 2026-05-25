@@ -30,7 +30,9 @@ def _dbg(*parts):
 # make sure qtpy targets PyQt6. Harmless on Windows/GTK. Set before importing.
 os.environ.setdefault("QT_API", "pyqt6")
 
+_dbg("importing webview/pythonnet ...")
 import webview
+_dbg("webview imported")
 
 # pywebview's Windows (WinForms) backend logs the native window object at
 # startup; pythonnet's repr of its AccessibilityObject recurses infinitely
@@ -653,6 +655,7 @@ def main():
             os.environ["COPILOT_HOST"] = sys.argv[i + 1]
     # env/proxy loading moved into Api.start() so a slow OneDrive .env read happens
     # behind the spinner rather than delaying the window from appearing.
+    _dbg("main: creating window")          # gap vs the very first line below = Python import time
     api = Api()
     window = webview.create_window(
         "Copilot Desktop",
@@ -664,6 +667,7 @@ def main():
     )
     api.window = window
     # gui=None lets pywebview pick the platform's webview (EdgeWebView2 on Win11).
+    _dbg("main: webview.start() — gap to 'start(): ...' = WebView2 init + page load")
     webview.start()
 
 
