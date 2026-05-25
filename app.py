@@ -105,6 +105,17 @@ def _load_env_file() -> None:
     we split only on the first '='."""
     candidates = []
     explicit = os.environ.get("COPILOT_ENV_FILE")
+    if not explicit and os.name == "nt":
+        # `setx COPILOT_ENV_FILE ...` updates the user's registry environment but
+        # not the already-open PowerShell process. Reading HKCU makes the very next
+        # app launch in that same terminal see the value, which matches how native
+        # desktop apps tend to pick up user-level environment changes.
+        try:
+            import winreg
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, "Environment") as key:
+                explicit = winreg.QueryValueEx(key, "COPILOT_ENV_FILE")[0]
+        except Exception:
+            explicit = None
     if explicit:
         candidates.append(explicit)
     candidates.append(os.path.join(HERE, ".env"))
@@ -218,6 +229,9 @@ class Api:
         self.active_project_id: str | None = None
         self.active_workspace_id: str | None = None
         self.active_session_id: str | None = None
+        self._start_lock = threading.Lock()
+        self._start_inflight = False
+        self._last_start_result = None
         # Integrated terminals (PowerShell on Windows). Multiple tabs, each its own
         # shell; a new tab opens in the active project folder. Keyed by string id.
         self.terminals: dict[str, Terminal] = {}
@@ -313,11 +327,11 @@ class Api:
 
     # ----- exposed to the UI -----
 
-    def start(self, github_token: str | None = None):
+    def _start_blocking(self, github_token: str | None = None):
         # Load the .env + proxy here (not at process start) so a slow OneDrive read
         # of COPILOT_ENV_FILE happens behind the "Connecting…" spinner, not before
         # the window appears. Both are idempotent (setdefault), safe to re-run.
-        _dbg("start(): loading env/proxy")
+        _dbg("_start_blocking(): loading env/proxy")
         _load_env_file()
         _apply_copilot_proxy()
         token = github_token or os.environ.get("GITHUB_TOKEN") or None
@@ -343,25 +357,52 @@ class Api:
             on_permission=lambda p: self._js("onPermissionRequest", p),
         )
         try:
-            _dbg("start(): calling backend.start() ...")
+            _dbg("_start_blocking(): calling backend.start() ...")
             status = self._run(self.backend.start(), timeout=200)
-            _dbg("start(): backend.start() returned; authenticated =", self.backend.authenticated)
+            _dbg("_start_blocking(): backend.start() returned; authenticated =", self.backend.authenticated)
             if not self.backend.authenticated:
-                return {"ok": False, "needsAuth": True, "error": "Not signed in to GitHub Copilot",
+                self._last_start_result = {"ok": False, "needsAuth": True, "error": "Not signed in to GitHub Copilot",
                         "host": os.environ.get("COPILOT_HOST", "")}
+                return self._last_start_result
             models = []
             try:   # bounded + non-fatal: a slow proxy shouldn't stall startup
-                _dbg("start(): list_models() ...")
+                _dbg("_start_blocking(): list_models() ...")
                 models = [getattr(m, "id", str(m)) for m in self._run(self.backend.list_models(), timeout=20)]
-                _dbg("start(): list_models() returned", len(models), "models")
+                _dbg("_start_blocking(): list_models() returned", len(models), "models")
             except Exception as e:
-                _dbg("start(): list_models() failed/timed out:", repr(e))
-            _dbg("start(): returning ok")
-            return {"ok": True, "status": str(status), "models": models,
+                _dbg("_start_blocking(): list_models() failed/timed out:", repr(e))
+            _dbg("_start_blocking(): returning ok")
+            self._last_start_result = {"ok": True, "status": str(status), "models": models,
                     "workdir": self.backend.working_dir, "login": self.backend.login}
+            return self._last_start_result
         except Exception as e:
-            _dbg("start(): EXCEPTION:", repr(e))
-            return {"ok": False, "error": str(e)}
+            _dbg("_start_blocking(): EXCEPTION:", repr(e))
+            self._last_start_result = {"ok": False, "error": str(e)}
+            return self._last_start_result
+
+    def _start_worker(self, github_token=None):
+        try:
+            res = self._start_blocking(github_token)
+        finally:
+            with self._start_lock:
+                self._start_inflight = False
+        self._js("onBackendReady", res)
+
+    def start(self, github_token: str | None = None):
+        """Kick off Copilot connection without blocking the WebView bridge.
+
+        GitHub's desktop app keeps the shell responsive while auth/session setup
+        happens in the background. Returning immediately here avoids Windows
+        marking the WebView "Not Responding" during proxy/auth/model discovery.
+        """
+        if self.backend and self.backend.authenticated and self._last_start_result:
+            return {**self._last_start_result, "ready": True}
+        with self._start_lock:
+            if self._start_inflight:
+                return {"ok": True, "starting": True}
+            self._start_inflight = True
+        threading.Thread(target=self._start_worker, args=(github_token,), daemon=True).start()
+        return {"ok": True, "starting": True}
 
     def send(self, prompt: str, attachments=None, session_id=None):
         if not self.backend:
@@ -1283,7 +1324,7 @@ class Api:
                             self._run(self.backend.client.stop())
                     except Exception:
                         pass
-                    res = self.start()          # re-run start; now authenticated
+                    res = self._start_blocking()          # reconnect now authenticated
                     self._js("onAuthDone", res)
                 else:
                     self._js("onAuthDone", {"ok": False, "error": "Login exited (code %d)" % rc})

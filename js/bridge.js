@@ -9,6 +9,7 @@ let started = false;
 let backendReady = false;
 let curTarget = null;   // assistant <div.m-content> currently streaming
 let curBuf = "";        // accumulated raw markdown for the current reply
+let backendStartTimer = null;
 
 window.addEventListener('pywebviewready', initBackend);
 
@@ -20,37 +21,60 @@ async function initBackend(){
   showConnecting(true, 'Connecting to GitHub Copilot');   // spinner + animated dots while start() runs
   try{
     const res = await window.pywebview.api.start();
-    showConnecting(false);
-    if(res && res.ok){
-      backendReady = true;
-      setStatus('ok');
-      document.getElementById('bannerHost').innerHTML = '';
-      if(res.models && res.models.length){
-        MODELS = res.models; modelIdx = 0;
-        document.getElementById('modelName').textContent = MODELS[0];
-      }
-      if(res.workdir) setWdDisplay(res.workdir);
-      setAccount(res.login);
-      await loadConversations();
-      await loadCommands();
-      newChat();
-      refreshUsage();
-    } else if(res && res.needsAuth){
-      setStatus('warn');
-      if(res.host){
-        const host = document.getElementById('authHost');
-        if(host) host.value = res.host;
-      }
-      showAuth(true);
+    if(res && res.starting){
+      backendStartTimer = setTimeout(()=>{
+        if(!backendReady){
+          showConnecting(true, 'Still connecting to GitHub Copilot');
+          showBanner('warn', 'Copilot is still connecting. The app remains usable while auth, proxy, and model discovery finish.');
+        }
+      }, 45000);
+    } else if(res && res.ready){
+      await handleBackendResult(res);
     } else {
-      setStatus('err');
-      showBanner('err','Copilot not connected: ' + ((res&&res.error)||'unknown error') + '.');
+      await handleBackendResult(res);
     }
   }catch(e){
     showConnecting(false);
     setStatus('err');
     showBanner('err','Could not reach the backend: ' + e);
   }
+}
+
+async function handleBackendResult(res){
+  if(backendStartTimer){ clearTimeout(backendStartTimer); backendStartTimer = null; }
+  showConnecting(false);
+  if(res && res.ok){
+    backendReady = true;
+    setStatus('ok');
+    showAuth(false);
+    document.getElementById('bannerHost').innerHTML = '';
+    if(res.models && res.models.length){
+      MODELS = res.models; modelIdx = 0;
+      document.getElementById('modelName').textContent = MODELS[0];
+    }
+    if(res.workdir) setWdDisplay(res.workdir);
+    setAccount(res.login);
+    await loadConversations();
+    await loadCommands();
+    newChat();
+    refreshUsage();
+  } else if(res && res.needsAuth){
+    backendReady = false;
+    setStatus('warn');
+    if(res.host){
+      const host = document.getElementById('authHost');
+      if(host) host.value = res.host;
+    }
+    showAuth(true);
+  } else {
+    backendReady = false;
+    setStatus('err');
+    showBanner('err','Copilot not connected: ' + ((res&&res.error)||'unknown error') + '.');
+  }
+}
+
+async function onBackendReady(res){
+  await handleBackendResult(res);
 }
 
 // Animated "Connecting…" overlay over the main area.
@@ -111,15 +135,14 @@ async function recheckAuth(){
   if(link){ link.disabled = true; link.textContent = 'Checking…'; }
   let res;
   try{ res = await window.pywebview.api.start(); }catch(e){ res = null; }
-  if(res && res.ok){
-    showAuth(false);
-    backendReady = true; setStatus('ok');
-    if(res.models && res.models.length){ MODELS = res.models; modelIdx = 0; document.getElementById('modelName').textContent = MODELS[0]; }
-    if(res.workdir) setWdDisplay(res.workdir);
-    setAccount(res.login);
-    try{ await loadConversations(); await loadCommands(); }catch(e){}
-    newChat();
-    flashBanner('Signed in' + (res.login ? ' as ' + res.login : ''));
+  if(res && (res.ok || res.starting)){
+    if(res.starting){
+      showConnecting(true, 'Checking GitHub Copilot sign-in');
+      if(link){ link.textContent = 'Checking…'; }
+      return;
+    }
+    await handleBackendResult(res);
+    if(res.ok) flashBanner('Signed in' + (res.login ? ' as ' + res.login : ''));
     return;
   }
   if(link){ link.disabled = false; link.textContent = 'Already signed in (e.g. via the Copilot CLI)? Re-check'; }
@@ -134,13 +157,7 @@ function onAuthStatus(msg){ const m=document.getElementById('authMsg'); if(m) m.
 async function onAuthDone(res){
   const btn = document.getElementById('authBtn');
   if(res && res.ok){
-    showAuth(false);
-    backendReady = true; setStatus('ok');
-    if(res.models && res.models.length){ MODELS = res.models; modelIdx = 0; document.getElementById('modelName').textContent = MODELS[0]; }
-    if(res.workdir) setWdDisplay(res.workdir);
-    setAccount(res.login);
-    try{ await loadConversations(); await loadCommands(); }catch(e){}
-    newChat();
+    await handleBackendResult(res);
     flashBanner('Signed in' + (res.login ? ' as ' + res.login : ''));
   } else {
     btn.disabled = false; btn.textContent = 'Try again';
