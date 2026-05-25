@@ -431,6 +431,18 @@
   .perm-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap}
   .modal-wide{width:560px;max-width:calc(100% - 40px)}
   .modal-wide .modal-body{max-height:78vh;overflow:auto}
+  /* right-side sliding panel variant of a modal (Settings + dialogs launched from it).
+     Stacks: Settings sits under, sub-panels slide over it; closing the top reveals it. */
+  .modal-overlay.rpanel{inset:0 0 0 auto;width:min(460px,100%);background:transparent;
+    display:flex;align-items:stretch;justify-content:stretch;transform:translateX(100%);
+    transition:transform .22s ease;pointer-events:none}
+  .modal-overlay.rpanel.open{transform:translateX(0);pointer-events:auto}
+  .modal-overlay.rpanel .modal{width:100%;max-width:100%;height:100%;border-radius:0;
+    border:0;border-left:1px solid var(--border);box-shadow:-14px 0 36px rgba(1,4,9,.5);
+    display:flex;flex-direction:column}
+  .modal-overlay.rpanel .modal-body{flex:1;overflow:auto;max-height:none}
+  #settingsModal.rpanel{z-index:100}
+  #instrModal.rpanel,#mcpModal.rpanel,#usageModal.rpanel{z-index:110}
   .cz-text{width:100%;box-sizing:border-box;min-height:90px;background:var(--bg);border:1px solid var(--border);
     border-radius:8px;color:var(--text);padding:9px 11px;font-family:var(--font);font-size:13px;resize:vertical;outline:none}
   .cz-text:focus{border-color:var(--accent)}
@@ -454,6 +466,8 @@
   .mcp-form label{display:block;font-size:12px;color:var(--text-dim);margin:6px 0 2px}
   .mcp-form input,.mcp-form textarea{width:100%;box-sizing:border-box;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);padding:6px 8px;font-size:12.5px;font-family:var(--font)}
   .mcp-empty{font-size:12px;color:var(--text-faint);padding:6px 0}
+  .mcp-sub{font-size:10.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--text-faint);margin:10px 0 4px}
+  .mcp-readonly{font-size:11px;color:var(--text-faint)}
   .perm-rule{display:flex;align-items:center;justify-content:space-between;margin:7px 0;gap:10px}
   .perm-rule-label{font-size:12.5px;color:var(--text-dim)}
   .perm-rule .seg{padding:4px 9px;font-size:11.5px}

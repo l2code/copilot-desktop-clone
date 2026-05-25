@@ -179,7 +179,7 @@ function closeSettings(){ document.getElementById('settingsModal').classList.rem
 // Custom instructions and MCP servers are now two separate, focused dialogs.
 let _instrOrig = '';   // instructions text as loaded, to detect unsaved changes
 async function openInstructions(){
-  closeSettings();
+  // Slide over Settings (leave it open underneath); closing reveals Settings.
   document.getElementById('instrModal').classList.add('open');
   if(backendReady){
     try{ const r = await window.pywebview.api.get_instructions(); _instrOrig = (r && r.text) || ''; }catch(e){ _instrOrig = ''; }
@@ -195,7 +195,7 @@ function instrDirtyCheck(){
 function closeInstructions(){ document.getElementById('instrModal').classList.remove('open'); }
 function cancelInstructions(){ closeInstructions(); openSettings(); }  // discard edits, return to Settings
 async function openMcp(){
-  closeSettings();
+  // Slide over Settings (leave it open underneath); closing reveals Settings.
   document.getElementById('mcpModal').classList.add('open');
   document.getElementById('mcpErr').textContent = '';
   document.getElementById('mcpForm').style.display = 'none';
@@ -253,10 +253,13 @@ function parseKV(text, sep){
 function renderMcpList(){
   const host = document.getElementById('mcpList'); if(!host) return;
   const names = Object.keys(mcpServers);
-  const connected = names.filter(n=>(mcpStatus[n]||{}).status==='connected').length;
-  const hb = document.getElementById('mcpHealth'); if(hb) hb.textContent = names.length ? `(${connected}/${names.length} connected)` : '';
-  if(!names.length){ host.innerHTML = '<div class="mcp-empty">No MCP servers configured.</div>'; return; }
-  host.innerHTML = names.map(n=>{
+  // Servers that loaded via discovery (~/.copilot / .github) but aren't app-defined.
+  const discovered = Object.keys(mcpStatus).filter(n => !(n in mcpServers));
+  const connected = Object.keys(mcpStatus).filter(n=>(mcpStatus[n]||{}).status==='connected').length;
+  const total = names.length + discovered.length;
+  const hb = document.getElementById('mcpHealth'); if(hb) hb.textContent = total ? `(${connected}/${total} connected)` : '';
+  if(!total){ host.innerHTML = '<div class="mcp-empty">No MCP servers configured or discovered.</div>'; return; }
+  const ownRows = names.map(n=>{
     const cfg = mcpServers[n] || {};
     const t = cfg.url ? 'http' : 'stdio';
     const disabled = mcpDisabled.indexOf(n) !== -1;
@@ -274,6 +277,18 @@ function renderMcpList(){
         <button class="seg" onclick="mcpRemove('${escapeJsArg(n)}')">Remove</button>
       </span></div>`;
   }).join('');
+  // Read-only rows for discovered servers (managed in ~/.copilot, not editable here).
+  const discRows = discovered.map(n=>{
+    const st = (mcpStatus[n]||{}).status || 'pending';
+    const err = (mcpStatus[n]||{}).error || '';
+    return `<div class="mcp-row">
+      <span class="mcp-name">${escapeHtml(n)}</span>
+      <span class="mcp-badge ${escapeHtml(st)}" title="${escapeAttr(err)}">${escapeHtml(st)}</span>
+      <span class="mcp-meta">discovered · ~/.copilot</span>
+      <span class="mcp-spacer"></span>
+      <span class="mcp-actions"><span class="mcp-readonly">read-only</span></span></div>`;
+  }).join('');
+  host.innerHTML = ownRows + (discRows ? '<div class="mcp-sub">Discovered (managed in ~/.copilot)</div>' + discRows : '');
 }
 function mcpAddNew(){ mcpRenderForm(''); }
 function mcpEdit(name){ mcpRenderForm(name); }
