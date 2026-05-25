@@ -7,6 +7,7 @@ from unittest.mock import patch
 from activity import ActivityLog
 from file_service import FileService
 from git_service import parse_github_remote_url, parse_gitlab_remote_url, parse_porcelain_v2_z
+from gitlab_service import GitLabService
 from project_service import ProjectService
 from session_manager import SessionManager
 from storage import Storage
@@ -128,12 +129,20 @@ class ServiceTests(unittest.TestCase):
                 "GITLAB_PROJECT_ID": "old-project",
             }
             with patch.dict(os.environ, env, clear=True):
+                service = GitLabService()
                 _load_env_file()
 
+                self.assertEqual(service.base_url, "https://devcloud.ubs.net")
                 self.assertEqual(os.environ["GITLAB_URL"], "https://devcloud.ubs.net")
                 self.assertEqual(os.environ["GITLAB_PROJECT_ID"], "170848")
                 self.assertEqual(os.environ["GITLAB_GROUP_ID"], "350440")
                 self.assertEqual(os.environ["GITLAB_PERSONAL_ACCESS_TOKEN"], "abc")
+
+    def test_gitlab_api_url_is_normalized_to_host_base(self):
+        with patch.dict(os.environ, {"GITLAB_API_URL": "https://devcloud.ubs.net/api/v4"}, clear=True):
+            service = GitLabService()
+            self.assertEqual(service.base_url, "https://devcloud.ubs.net")
+            self.assertEqual(service.env_status()["url_source"], "GITLAB_API_URL")
 
 
 if __name__ == "__main__":

@@ -91,6 +91,19 @@ INDEX = os.path.join(HERE, "index.html")
 HISTORY_DIR = os.environ.get("COPILOT_DESKTOP_HOME") or os.path.join(os.path.expanduser("~"), ".copilot-desktop")
 HISTORY_FILE = os.path.join(HISTORY_DIR, "history.json")
 PREFS_FILE = os.path.join(HISTORY_DIR, "prefs.json")  # small app prefs, e.g. last working folder
+_ENV_FILE_STATUS = {
+    "explicit": None,
+    "explicit_exists": False,
+    "loaded_path": None,
+    "loaded_keys": [],
+    "gitlab_keys": [],
+}
+
+
+def _norm_env_path(path: str | None) -> str | None:
+    if not path:
+        return None
+    return os.path.abspath(os.path.expandvars(os.path.expanduser(path)))
 
 
 def _load_env_file() -> None:
@@ -108,6 +121,7 @@ def _load_env_file() -> None:
         "GITLAB_GROUP_ID", "GITLAB_GROUP_PATH", "GITLAB_TOKEN",
         "GITLAB_PERSONAL_ACCESS_TOKEN", "GL_TOKEN", "GITLAB_PRIVATE_TOKEN",
     }
+    global _ENV_FILE_STATUS
     candidates = []
     explicit = os.environ.get("COPILOT_ENV_FILE")
     if not explicit and os.name == "nt":
@@ -124,13 +138,15 @@ def _load_env_file() -> None:
     if explicit:
         candidates.append(explicit)
     candidates.append(os.path.join(HERE, ".env"))
-    explicit_abs = os.path.abspath(os.path.expanduser(explicit)) if explicit else None
+    explicit_abs = _norm_env_path(explicit)
+    loaded_path = None
+    loaded_keys: set[str] = set()
     for path in candidates:
         try:
-            if not (path and os.path.isfile(path)):
+            path_abs = _norm_env_path(path)
+            if not (path_abs and os.path.isfile(path_abs)):
                 continue
-            path_abs = os.path.abspath(os.path.expanduser(path))
-            with open(path, encoding="utf-8") as f:
+            with open(path_abs, encoding="utf-8-sig") as f:
                 for raw in f:
                     line = raw.strip()
                     if not line or line.startswith("#") or "=" not in line:
@@ -141,12 +157,26 @@ def _load_env_file() -> None:
                     key = key.strip()
                     val = val.strip().strip('"').strip("'")
                     if key:
-                        if path_abs == explicit_abs and key in explicit_keys:
+                        loaded_path = path_abs
+                        loaded_keys.add(key)
+                        if (explicit_abs and os.path.normcase(path_abs) == os.path.normcase(explicit_abs)
+                                and key in explicit_keys):
                             os.environ[key] = val
                         else:
                             os.environ.setdefault(key, val)
         except Exception:
             pass  # never let env loading break startup
+    _ENV_FILE_STATUS = {
+        "explicit": explicit,
+        "explicit_exists": bool(explicit_abs and os.path.isfile(explicit_abs)),
+        "loaded_path": loaded_path,
+        "loaded_keys": sorted(loaded_keys),
+        "gitlab_keys": sorted(k for k in loaded_keys if k.startswith("GITLAB_") or k == "GL_TOKEN"),
+    }
+
+
+def _env_file_status() -> dict:
+    return dict(_ENV_FILE_STATUS)
 
 
 def _apply_copilot_proxy() -> None:
@@ -1060,7 +1090,9 @@ class Api:
         return self.gitlab.auth_status()
 
     def get_gitlab_env_status(self):
-        return self.gitlab.env_status()
+        status = self.gitlab.env_status()
+        status["env_file"] = _env_file_status()
+        return status
 
     def get_gitlab_project(self, target=None):
         try:

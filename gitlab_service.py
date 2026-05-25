@@ -11,7 +11,38 @@ import urllib.request
 
 class GitLabService:
     def __init__(self, base_url: str | None = None):
-        self.base_url = (base_url or os.environ.get("GITLAB_URL") or "https://gitlab.com").rstrip("/")
+        self._base_url = base_url
+
+    @staticmethod
+    def _normalize_base_url(value: str | None) -> str | None:
+        if not value:
+            return None
+        url = value.strip().rstrip("/")
+        if not url:
+            return None
+        if not urlparse(url).scheme:
+            url = "https://" + url
+        parsed = urlparse(url)
+        path = parsed.path.rstrip("/")
+        if path.endswith("/api/v4"):
+            path = path[:-len("/api/v4")]
+            url = parsed._replace(path=path or "", params="", query="", fragment="").geturl()
+        return url.rstrip("/")
+
+    def discover_base_url(self) -> tuple[str, str]:
+        for name in ("GITLAB_URL", "GITLAB_BASE_URL", "CI_SERVER_URL", "GITLAB_API_URL"):
+            base = self._normalize_base_url(os.environ.get(name))
+            if base:
+                return base, name
+        base = self._normalize_base_url(self._base_url)
+        if base:
+            return base, "constructor"
+        return "https://gitlab.com", "default"
+
+    @property
+    def base_url(self) -> str:
+        base, _ = self.discover_base_url()
+        return base
 
     @property
     def host(self) -> str:
@@ -25,10 +56,12 @@ class GitLabService:
 
     def env_status(self) -> dict:
         token, source = self.discover_token()
+        base_url, url_source = self.discover_base_url()
         return {
             "ok": True,
-            "base_url": self.base_url,
-            "host": self.host,
+            "base_url": base_url,
+            "host": urlparse(base_url).netloc or "gitlab.com",
+            "url_source": url_source,
             "token_source": source,
             "has_token": bool(token),
             "default_project": os.environ.get("GITLAB_PROJECT_ID") or os.environ.get("GITLAB_PROJECT_PATH"),
@@ -63,6 +96,7 @@ class GitLabService:
         token, _ = self.discover_token()
         if not token:
             return {"ok": False, "error": "GitLab authentication is not configured."}
+        base_url = self.base_url
         qs = ("?" + urlencode({k: v for k, v in (params or {}).items() if v not in (None, "")}, doseq=True)) if params else ""
         data = None
         headers = {
@@ -73,7 +107,7 @@ class GitLabService:
         if body is not None:
             data = json.dumps(body).encode("utf-8")
             headers["Content-Type"] = "application/json"
-        req = urllib.request.Request(f"{self.base_url}/api/v4{path}{qs}", data=data, method=method, headers=headers)
+        req = urllib.request.Request(f"{base_url}/api/v4{path}{qs}", data=data, method=method, headers=headers)
         try:
             with urllib.request.urlopen(req, timeout=30) as resp:
                 raw = resp.read().decode("utf-8")
