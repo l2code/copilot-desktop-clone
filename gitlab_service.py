@@ -18,7 +18,7 @@ class GitLabService:
         return urlparse(self.base_url).netloc or "gitlab.com"
 
     def discover_token(self) -> tuple[str | None, str | None]:
-        for name in ("GITLAB_TOKEN", "GL_TOKEN", "GITLAB_PRIVATE_TOKEN"):
+        for name in ("GITLAB_TOKEN", "GITLAB_PERSONAL_ACCESS_TOKEN", "GL_TOKEN", "GITLAB_PRIVATE_TOKEN"):
             if os.environ.get(name):
                 return os.environ[name], name
         return None, None

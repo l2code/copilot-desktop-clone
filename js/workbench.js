@@ -198,7 +198,7 @@ async function renderGitlabPanel(){
   const target = project && project.project_target ? project.project_target : '';
   const authLine = auth.authenticated
     ? `Signed in as ${escapeHtml(auth.username || auth.name || 'GitLab')} · ${escapeHtml(auth.base_url || '')}`
-    : `Not authenticated. Set GITLAB_TOKEN, GL_TOKEN, or GITLAB_PRIVATE_TOKEN.`;
+    : `Not authenticated. Set GITLAB_TOKEN, GITLAB_PERSONAL_ACCESS_TOKEN, GL_TOKEN, or GITLAB_PRIVATE_TOKEN.`;
   const envLine = env && env.ok
     ? `GitLab URL: ${escapeHtml(env.base_url || '')} · Token: ${escapeHtml(env.token_source || 'not detected')}${env.default_project ? ' · Project: ' + escapeHtml(env.default_project) : ''}${env.default_group ? ' · Group: ' + escapeHtml(env.default_group) : ''}`
     : '';

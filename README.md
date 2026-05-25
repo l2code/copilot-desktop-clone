@@ -156,8 +156,8 @@ Copilot SDK subprocess) uses standard proxy environment variables —
   temporary app-data folder.
 - The workspace workbench uses Git from `PATH`. GitHub panels use `GITHUB_TOKEN`,
   `GH_TOKEN`, or `gh auth token` and degrade gracefully when unauthenticated.
-- GitLab backlog panels use `GITLAB_TOKEN`, `GL_TOKEN`, or
-  `GITLAB_PRIVATE_TOKEN`. Set `GITLAB_URL` for self-managed GitLab, and
+- GitLab backlog panels use `GITLAB_TOKEN`, `GITLAB_PERSONAL_ACCESS_TOKEN`,
+  `GL_TOKEN`, or `GITLAB_PRIVATE_TOKEN`. Set `GITLAB_URL` for self-managed GitLab, and
   optionally `GITLAB_PROJECT_ID` / `GITLAB_PROJECT_PATH` or
   `GITLAB_GROUP_ID` / `GITLAB_GROUP_PATH` for default backlog targets.
 - To ship as a single `.exe`, run PyInstaller against `app.py` — still no admin,
