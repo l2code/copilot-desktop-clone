@@ -301,6 +301,8 @@ function mcpRenderForm(name){
       <label>URL</label><input id="mcpfUrl" value="${escapeAttr(cfg.url||'')}" placeholder="https://example.com/mcp">
       <label>Headers (KEY: VALUE per line)</label><textarea id="mcpfHeaders" rows="2">${escapeHtml(Object.entries(cfg.headers||{}).map(kv=>kv[0]+': '+kv[1]).join('\n'))}</textarea>
     </div>
+    <label>Tools — limit which this server exposes (comma-separated; blank = all)</label>
+    <input id="mcpfTools" value="${escapeAttr((cfg.tools && cfg.tools[0] !== '*') ? (cfg.tools||[]).join(', ') : '')}" placeholder="e.g. search_code, get_file_contents  (helps stay under the 128-tool limit)">
     <div class="cz-actions" style="gap:6px;margin-top:8px">
       <button type="button" class="seg" onclick="mcpCancelForm()">Cancel</button>
       <button type="button" class="seg on" onclick="mcpSaveForm()">Save server</button>
@@ -317,17 +319,21 @@ async function mcpSaveForm(){
   const name = document.getElementById('mcpfName').value.trim();
   if(!name){ document.getElementById('mcpErr').textContent = 'Server name is required.'; return; }
   const httpVisible = document.getElementById('mcpHttp').style.display !== 'none';
+  // Per-server tool allowlist: blank = all ("*"), otherwise only the named tools
+  // load (fewer tools = easier to stay under Copilot's 128-tool-per-request cap).
+  const toolsRaw = (document.getElementById('mcpfTools').value || '').trim();
+  const tools = toolsRaw ? toolsRaw.split(',').map(s=>s.trim()).filter(Boolean) : ['*'];
   let cfg;
   if(httpVisible){
     const url = document.getElementById('mcpfUrl').value.trim();
     if(!url){ document.getElementById('mcpErr').textContent = 'URL is required for HTTP servers.'; return; }
-    cfg = {type:'http', url, tools:['*']};
+    cfg = {type:'http', url, tools};
     const h = parseKV(document.getElementById('mcpfHeaders').value, ':'); if(Object.keys(h).length) cfg.headers = h;
   } else {
     const command = document.getElementById('mcpfCmd').value.trim();
     if(!command){ document.getElementById('mcpErr').textContent = 'Command is required for local servers.'; return; }
     cfg = {type:'local', command,
-           args: document.getElementById('mcpfArgs').value.trim().split(/\s+/).filter(Boolean), tools:['*']};
+           args: document.getElementById('mcpfArgs').value.trim().split(/\s+/).filter(Boolean), tools};
     const e = parseKV(document.getElementById('mcpfEnv').value, '='); if(Object.keys(e).length) cfg.env = e;
   }
   mcpServers[name] = cfg;
