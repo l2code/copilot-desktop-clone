@@ -233,6 +233,39 @@ class ServiceTests(unittest.TestCase):
             self.assertEqual(command, "launcher.cmd")
             self.assertEqual(args, [])
 
+    def test_gitlab_mcp_copilot_config_includes_selected_server(self):
+        with tempfile.TemporaryDirectory() as d:
+            config = os.path.join(d, "mcp-config.json")
+            with open(config, "w", encoding="utf-8") as f:
+                json.dump({
+                    "mcpServers": {
+                        "GitLab-MCP": {
+                            "args": ["launcher.cmd"],
+                            "env": {"GITLAB_API_URL": "https://from-config/api/v4"},
+                            "tools": ["*"],
+                        },
+                    }
+                }, f)
+
+            service = GitLabMCPService(settings_getter=lambda: {
+                "gitlab_mcp_config": config,
+                "gitlab_mcp_server": "GitLab-MCP",
+                "gitlab_token": "secret",
+                "gitlab_url": "https://devcloud.ubs.net",
+                "gitlab_project": "170848",
+                "gitlab_group": "350440",
+            })
+            cfg = service.copilot_server_config()
+            server = cfg["mcp_servers"]["GitLab-MCP"]
+
+            self.assertEqual(server["command"], "launcher.cmd")
+            self.assertEqual(server["args"], [])
+            self.assertEqual(server["tools"], ["*"])
+            self.assertEqual(server["env"]["GITLAB_API_URL"], "https://devcloud.ubs.net/api/v4")
+            self.assertEqual(server["env"]["GITLAB_PROJECT_ID"], "170848")
+            self.assertEqual(server["env"]["GITLAB_GROUP_ID"], "350440")
+            self.assertEqual(server["env"]["GITLAB_PERSONAL_ACCESS_TOKEN"], "secret")
+
     def test_gitlab_mcp_wraps_windows_cmd_launchers(self):
         service = GitLabMCPService(settings_getter=lambda: {})
         with patch("mcp_gitlab_service.os.name", "nt"):

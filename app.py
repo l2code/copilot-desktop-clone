@@ -122,6 +122,27 @@ def _env_int(name: str, default: int) -> int:
         return default
 
 
+def _redact_mcp_servers(servers):
+    secret_markers = ("TOKEN", "SECRET", "PASSWORD", "PASS", "KEY")
+    out = {}
+    for name, cfg in (servers or {}).items():
+        clean = dict(cfg or {})
+        env = clean.get("env")
+        if isinstance(env, dict):
+            clean["env"] = {
+                k: ("<redacted>" if any(marker in str(k).upper() for marker in secret_markers) else v)
+                for k, v in env.items()
+            }
+        headers = clean.get("headers")
+        if isinstance(headers, dict):
+            clean["headers"] = {
+                k: ("<redacted>" if any(marker in str(k).upper() for marker in secret_markers + ("AUTH",)) else v)
+                for k, v in headers.items()
+            }
+        out[name] = clean
+    return out
+
+
 def _load_env_file() -> None:
     """Load a .env into the process environment so the Copilot SDK subprocess
     inherits things like corporate proxy settings (HTTPS_PROXY / HTTP_PROXY /
@@ -399,6 +420,41 @@ class Api:
                 pass
         self._js("onCopilotError", message)
 
+    def _apply_gitlab_settings_env(self):
+        """Expose saved GitLab connection settings to child processes.
+
+        The selected MCP launcher often expects GITLAB_API_URL / token / project
+        ids in its environment. Keeping these on os.environ lets the Copilot CLI
+        spawn the same MCP server successfully without embedding secrets in the
+        MCP server process can inherit them. UI surfaces redact these values.
+        """
+        settings = self.settings.get_settings()
+        token = str(settings.get("gitlab_token") or "").strip()
+        if token:
+            os.environ["GITLAB_TOKEN"] = token
+            os.environ["GITLAB_PERSONAL_ACCESS_TOKEN"] = token
+            os.environ["GL_TOKEN"] = token
+        url = str(settings.get("gitlab_url") or "").strip()
+        if url:
+            api = url.rstrip("/")
+            if not api.endswith("/api/v4"):
+                api += "/api/v4"
+            os.environ["GITLAB_API_URL"] = api
+        if settings.get("gitlab_project"):
+            os.environ["GITLAB_PROJECT_ID"] = str(settings.get("gitlab_project"))
+        if settings.get("gitlab_group"):
+            os.environ["GITLAB_GROUP_ID"] = str(settings.get("gitlab_group"))
+
+    def _selected_gitlab_mcp_servers(self) -> tuple[dict | None, str | None, str | None]:
+        settings = self.settings.get_gitlab_settings()
+        if settings.get("data_source") != "mcp":
+            return None, None, None
+        try:
+            cfg = self.gitlab_mcp.copilot_server_config()
+            return cfg.get("mcp_servers") or None, cfg.get("server"), None
+        except Exception as e:
+            return None, settings.get("mcp_server") or "GitLab-MCP", str(e)
+
     # ----- exposed to the UI -----
 
     def _start_blocking(self, github_token: str | None = None):
@@ -424,9 +480,21 @@ class Api:
         from copilot_backend import CopilotBackend   # lazy: heavy SDK import, kept off the UI startup path
 
         def make_backend(config_discovery: bool | None = None):
+            self._apply_gitlab_settings_env()
             backend = CopilotBackend(github_token=token, working_dir=workdir)
             if config_discovery is not None:
                 backend.config_discovery = bool(config_discovery)
+            gitlab_servers, gitlab_server_name, gitlab_error = self._selected_gitlab_mcp_servers()
+            if gitlab_servers:
+                backend.mcp_servers = gitlab_servers
+                backend.system_hints = (
+                    "When the user asks about GitLab stories, sprint/current iteration, "
+                    "issues, epics, or backlog, use the configured GitLab MCP tools "
+                    f"from `{gitlab_server_name}` before trying shell commands, curl, "
+                    "or direct REST URLs. Do not invent `gitlab-mcp.*` REST hosts."
+                )
+            elif gitlab_error:
+                backend.mcp_status[gitlab_server_name or "GitLab-MCP"] = {"status": "failed", "error": gitlab_error}
             backend.set_handlers(
                 on_delta=lambda c: self._js("onCopilotDelta", c),
                 on_done=self._handle_copilot_done,
@@ -625,7 +693,7 @@ class Api:
             return {"ok": False, "error": str(e)}
 
     def get_mcp(self):
-        return {"ok": True, "servers": (self.backend.mcp_servers or {}) if self.backend else {}}
+        return {"ok": True, "servers": _redact_mcp_servers(self.backend.mcp_servers) if self.backend else {}}
 
     def set_mcp(self, servers):
         if not self.backend:
@@ -1229,6 +1297,18 @@ class Api:
         try:
             settings = self.settings.update_gitlab_settings(patch or {})
             status = self.gitlab.env_status()
+            self._apply_gitlab_settings_env()
+            if self.backend and self.backend.authenticated:
+                servers, server_name, error = self._selected_gitlab_mcp_servers()
+                if servers:
+                    self.backend.system_hints = (
+                        "When the user asks about GitLab stories, sprint/current iteration, "
+                        "issues, epics, or backlog, use the configured GitLab MCP tools "
+                        f"from `{server_name}` before trying shell commands, curl, or direct REST URLs."
+                    )
+                    self._run(self.backend.set_mcp_servers(servers), timeout=60)
+                elif error:
+                    self.backend.mcp_status[server_name or "GitLab-MCP"] = {"status": "failed", "error": error}
             return {"ok": True, "settings": settings, "status": status}
         except Exception as e:
             return {"ok": False, "error": str(e)}

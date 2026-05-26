@@ -59,6 +59,7 @@ class CopilotBackend:
         self.model = model
         self.working_dir = working_dir   # folder Copilot may read/run commands in
         self.instructions = ""           # custom instructions (system message, append mode)
+        self.system_hints = ""           # app-generated guidance, kept separate from user instructions
         self.mcp_servers = None          # dict[str, MCPServerConfig] for MCP tools
         self.mcp_status = {}             # name -> {status, error} from session events
         self.mcp_disabled = set()        # names the user has toggled off
@@ -283,8 +284,9 @@ class CopilotBackend:
             working_directory=self.working_dir,
             enable_config_discovery=discover,   # honor repo .github + ~/.copilot config
         )
-        if self.instructions:
-            kwargs["system_message"] = {"mode": "append", "content": self.instructions}
+        system_parts = [p for p in (self.system_hints, self.instructions) if p]
+        if system_parts:
+            kwargs["system_message"] = {"mode": "append", "content": "\n\n".join(system_parts)}
         if self.mcp_servers:
             active = {n: c for n, c in self.mcp_servers.items() if n not in self.mcp_disabled}
             if active:

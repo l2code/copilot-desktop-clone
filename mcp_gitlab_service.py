@@ -160,6 +160,14 @@ class GitLabMCPService:
         except Exception as e:
             return {"ok": False, "error": str(e), "tools": []}
 
+    def copilot_server_config(self) -> dict:
+        """Return the selected GitLab MCP server in the shape expected by the
+        Copilot SDK. Unlike the direct status/search path, this config is handed
+        to the Copilot CLI so chat can call the actual MCP tools."""
+        config_path, server_name, server = self._server_config()
+        cfg = self._normalized_server_config(server, include_settings_env=True)
+        return {"ok": True, "config_path": config_path, "server": server_name, "mcp_servers": {server_name: cfg}}
+
     def current_sprint(self, group=None, assignee=None, labels=None) -> dict:
         group = group or self._settings().get("gitlab_group")
         if not group:
@@ -308,9 +316,38 @@ class GitLabMCPService:
             return os.environ.get("ComSpec") or "cmd.exe", ["/c", command, *args]
         return command, args
 
+    def _normalized_server_config(self, server: dict, include_settings_env: bool = True) -> dict:
+        command, args = self._command(server)
+        cfg: dict = {"command": command, "args": args}
+        if server.get("cwd"):
+            cfg["cwd"] = str(server.get("cwd"))
+        env = dict(server.get("env") or {})
+        if include_settings_env:
+            env.update(self._settings_env_overrides())
+        env = {str(k): str(v) for k, v in env.items() if v is not None}
+        if env:
+            cfg["env"] = env
+        tools = server.get("tools")
+        if isinstance(tools, list):
+            cfg["tools"] = [str(t) for t in tools]
+        if server.get("timeout"):
+            try:
+                cfg["timeout"] = int(server.get("timeout"))
+            except Exception:
+                pass
+        typ = str(server.get("type") or "").strip().lower()
+        if typ in ("local", "stdio", "http", "sse"):
+            cfg["type"] = typ
+        return cfg
+
     def _env(self, server: dict) -> dict:
         env = os.environ.copy()
         env.update({str(k): str(v) for k, v in (server.get("env") or {}).items()})
+        env.update(self._settings_env_overrides())
+        return env
+
+    def _settings_env_overrides(self) -> dict:
+        env: dict[str, str] = {}
         settings = self._settings()
         token = str(settings.get("gitlab_token") or "").strip()
         if token:
