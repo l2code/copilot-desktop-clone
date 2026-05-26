@@ -20,11 +20,19 @@ class MCPError(RuntimeError):
 
 
 class StdioMCPClient:
-    def __init__(self, command: str, args: list[str] | None = None, env: dict | None = None, timeout: int = 45):
+    def __init__(
+        self,
+        command: str,
+        args: list[str] | None = None,
+        env: dict | None = None,
+        timeout: int = 90,
+        cwd: str | None = None,
+    ):
         self.command = command
         self.args = args or []
         self.env = env or os.environ.copy()
         self.timeout = timeout
+        self.cwd = cwd
         self.proc = None
         self._id = 0
         self._responses: queue.Queue = queue.Queue()
@@ -46,6 +54,7 @@ class StdioMCPClient:
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             env=self.env,
+            cwd=self.cwd or None,
             text=False,
         )
         self._reader = threading.Thread(target=self._read_loop, daemon=True)
@@ -144,6 +153,10 @@ class StdioMCPClient:
 class GitLabMCPService:
     def __init__(self, settings_getter=None):
         self._settings_getter = settings_getter
+        self._lock = threading.RLock()
+        self._client: StdioMCPClient | None = None
+        self._tools: list[dict] | None = None
+        self._signature: str | None = None
 
     def _settings(self) -> dict:
         if not self._settings_getter:
@@ -184,7 +197,7 @@ class GitLabMCPService:
                     iterations = self._as_list(iteration_res, ("iterations", "data", "items"))
                     current = self._normalize_iteration(iterations[0]) if iterations else None
                     if current:
-                        issues = self._issues_for_group(client, tools, group, {
+                        issues = self._issues_for_current_iteration(client, tools, group, current.get("id"), {
                             "iteration_id": current.get("id"),
                             "assignee_username": assignee,
                             "labels": labels,
@@ -252,16 +265,60 @@ class GitLabMCPService:
 
         class _Ctx:
             def __enter__(self):
-                _, _, server = service._server_config()
-                self.client = StdioMCPClient(*service._command(server), env=service._env(server))
-                self.client.__enter__()
-                self.tools = self.client.list_tools()
-                return self.client, self.tools
+                service._lock.acquire()
+                try:
+                    self.client, self.tools = service._ensure_client()
+                    return self.client, self.tools
+                except Exception:
+                    service._lock.release()
+                    raise
 
             def __exit__(self, exc_type, exc, tb):
-                self.client.__exit__(exc_type, exc, tb)
+                if exc_type:
+                    service.reset()
+                service._lock.release()
 
         return _Ctx()
+
+    def reset(self):
+        with self._lock:
+            if self._client:
+                try:
+                    self._client.close()
+                except Exception:
+                    pass
+            self._client = None
+            self._tools = None
+            self._signature = None
+
+    def _ensure_client(self):
+        _, _, server = self._server_config()
+        signature = self._server_signature(server)
+        if (
+            self._client
+            and self._client.proc
+            and self._client.proc.poll() is None
+            and self._signature == signature
+            and self._tools is not None
+        ):
+            return self._client, self._tools
+        self.reset()
+        command, args = self._command(server)
+        self._client = StdioMCPClient(
+            command,
+            args,
+            self._env(server),
+            timeout=self._timeout_seconds(server),
+            cwd=self._cwd(server),
+        )
+        self._client.__enter__()
+        self._tools = self._client.list_tools()
+        self._signature = signature
+        return self._client, self._tools
+
+    def _server_signature(self, server: dict) -> str:
+        cfg = self._normalized_server_config(server, include_settings_env=True)
+        return json.dumps(cfg, sort_keys=True, default=str)
 
     def _server_config(self) -> tuple[str, str, dict]:
         path = self._config_path()
@@ -319,8 +376,9 @@ class GitLabMCPService:
     def _normalized_server_config(self, server: dict, include_settings_env: bool = True) -> dict:
         command, args = self._command(server)
         cfg: dict = {"command": command, "args": args}
-        if server.get("cwd"):
-            cfg["cwd"] = str(server.get("cwd"))
+        cwd = self._cwd(server)
+        if cwd:
+            cfg["cwd"] = cwd
         env = dict(server.get("env") or {})
         if include_settings_env:
             env.update(self._settings_env_overrides())
@@ -368,7 +426,45 @@ class GitLabMCPService:
 
     def _client(self, server: dict) -> StdioMCPClient:
         command, args = self._command(server)
-        return StdioMCPClient(command, args, self._env(server))
+        return StdioMCPClient(command, args, self._env(server), timeout=self._timeout_seconds(server), cwd=self._cwd(server))
+
+    def _cwd(self, server: dict) -> str | None:
+        cwd = str(server.get("cwd") or "").strip()
+        if not cwd:
+            return None
+        return os.path.abspath(os.path.expandvars(os.path.expanduser(cwd)))
+
+    @staticmethod
+    def _timeout_seconds(server: dict) -> int:
+        raw = os.environ.get("GITLAB_MCP_TIMEOUT_SECONDS") or server.get("timeout") or 90
+        try:
+            value = int(raw)
+        except Exception:
+            return 90
+        return max(1, value // 1000 if value > 1000 else value)
+
+    def _issues_for_current_iteration(self, client, tools, group, iteration_id, extra):
+        tool = self._find_tool_entry(tools, ["list_issues", "search_issues", "get_issues", "list_group_issues", "search_group_issues"])
+        if not tool:
+            raise MCPError("The configured GitLab MCP server does not expose an issue search/list tool.")
+        tool_name = tool.get("name")
+        params = self._tool_param_names(tool)
+        project = self._settings().get("gitlab_project")
+        base = {**extra, "iteration_id": iteration_id, "scope": "all", "state": extra.get("state") or "opened", "per_page": 100}
+        variants = []
+        if "iteration_id" in params or "iterationId" in params or tool_name == "list_issues":
+            variants.append(base)
+            variants.append({"iterationId": iteration_id, **self._camel_extra(base)})
+        if project and ("project_id" in params or "projectId" in params or tool_name == "list_issues"):
+            variants.append({"project_id": project, **base})
+            variants.append({"projectId": project, **self._camel_extra(base)})
+        if "group_id" in params or "groupId" in params or "group" in params or "group" in tool_name.lower():
+            variants.append({"group_id": group, **base})
+            variants.append({"groupId": group, **self._camel_extra(base)})
+            variants.append({"group": group, **base})
+        if not variants:
+            variants = [{"group_id": group, **base}, base]
+        return self._normalize_issues(self._call_with_variants(client, tool_name, variants))
 
     def _issues_for_group(self, client, tools, group, extra, raw=False):
         tool = self._find_tool(tools, ["list_group_issues", "search_group_issues", "list_issues", "search_issues", "get_issues"])
@@ -409,19 +505,30 @@ class GitLabMCPService:
 
     @staticmethod
     def _find_tool(tools: list[dict], candidates: list[str]) -> str | None:
+        tool = GitLabMCPService._find_tool_entry(tools, candidates)
+        return tool.get("name") if tool else None
+
+    @staticmethod
+    def _find_tool_entry(tools: list[dict], candidates: list[str]) -> dict | None:
         names = [t.get("name") for t in tools if t.get("name")]
         norm = {re.sub(r"[^a-z0-9]", "", n.lower()): n for n in names}
         for candidate in candidates:
             c = re.sub(r"[^a-z0-9]", "", candidate.lower())
             if c in norm:
-                return norm[c]
+                return next((t for t in tools if t.get("name") == norm[c]), None)
         for candidate in candidates:
             c = re.sub(r"[^a-z0-9]", "", candidate.lower())
             for n in names:
                 nn = re.sub(r"[^a-z0-9]", "", n.lower())
                 if nn.endswith(c) or c in nn:
-                    return n
+                    return next((t for t in tools if t.get("name") == n), None)
         return None
+
+    @staticmethod
+    def _tool_param_names(tool: dict) -> set[str]:
+        schema = tool.get("inputSchema") or tool.get("parameters") or {}
+        props = schema.get("properties") if isinstance(schema, dict) else {}
+        return set(props.keys()) if isinstance(props, dict) else set()
 
     @staticmethod
     def _clean_args(args: dict) -> dict:

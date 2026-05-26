@@ -276,6 +276,33 @@ class ServiceTests(unittest.TestCase):
         self.assertTrue(command.endswith("cmd.exe") or command == "cmd.exe")
         self.assertEqual(args[:2], ["/c", r"C:\devpod\gitlab-mcp-launcher.cmd"])
 
+    def test_gitlab_mcp_current_iteration_uses_iteration_issue_filter(self):
+        calls = []
+
+        class FakeClient:
+            def call_tool(self, name, arguments):
+                calls.append((name, arguments))
+                return {
+                    "content": [{
+                        "type": "text",
+                        "text": json.dumps({"issues": [{"iid": 1196, "title": "Sprint story"}]}),
+                    }]
+                }
+
+        tools = [{
+            "name": "list_issues",
+            "inputSchema": {"properties": {"iteration_id": {}, "scope": {}, "state": {}, "per_page": {}}},
+        }]
+        service = GitLabMCPService(settings_getter=lambda: {"gitlab_project": "170848"})
+
+        issues = service._issues_for_current_iteration(FakeClient(), tools, "350440", "249590", {"state": "opened"})
+
+        self.assertEqual(issues[0]["iid"], 1196)
+        self.assertEqual(calls[0][0], "list_issues")
+        self.assertEqual(calls[0][1]["iteration_id"], "249590")
+        self.assertEqual(calls[0][1]["scope"], "all")
+        self.assertNotIn("group_id", calls[0][1])
+
     def test_copilot_backend_lists_app_tools(self):
         from copilot_backend import CopilotBackend
 

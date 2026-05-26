@@ -472,16 +472,26 @@ class Api:
         except Exception:
             return fallback or self.settings.get_gitlab_settings().get("mcp_server") or "GitLab-MCP"
 
-    def _gitlab_system_hint(self, server_name=None):
+    def _gitlab_system_hint(self, server_name=None, fallback_tools=False):
         via = f"the configured GitLab MCP server `{server_name}`" if server_name else "the configured GitLab MCP server"
+        if fallback_tools:
+            return (
+                "When the user asks about GitLab stories, current sprint/current iteration, "
+                "issues, epics, or backlog, use the app-provided fallback GitLab tools: "
+                "`gitlab_current_sprint`, `gitlab_search_stories`, `gitlab_get_issue`, "
+                "and `gitlab_mcp_status`. These tools call "
+                f"{via}. Do not run shell commands such as `gitlab-mcp`, PowerShell, "
+                "curl, or direct REST URLs for GitLab backlog/sprint work unless the "
+                "user explicitly asks for a shell command."
+            )
         return (
             "When the user asks about GitLab stories, current sprint/current iteration, "
-            "issues, epics, or backlog, use the app-provided GitLab tools first: "
-            "`gitlab_current_sprint`, `gitlab_search_stories`, `gitlab_get_issue`, "
-            "and `gitlab_mcp_status`. These tools call "
-            f"{via}. Do not run shell commands such as `gitlab-mcp`, PowerShell, "
-            "curl, or direct REST URLs for GitLab backlog/sprint work unless the "
-            "user explicitly asks for a shell command."
+            "issues, epics, or backlog, use the native MCP tools from "
+            f"{via} first. Do not run shell commands such as `gitlab-mcp`, "
+            "PowerShell, curl, or direct REST URLs for GitLab backlog/sprint work "
+            "unless the user explicitly asks for a shell command. For current sprint "
+            "requests, get the current group iteration first, then list issues by "
+            "`iteration_id` with `scope=all` and `state=opened`."
         )
 
     def _build_gitlab_tools(self):
@@ -621,12 +631,13 @@ class Api:
             if config_discovery is not None:
                 backend.config_discovery = bool(config_discovery)
             gitlab_servers, gitlab_server_name, gitlab_error = self._selected_gitlab_mcp_servers()
-            if self._gitlab_tools_enabled():
-                gitlab_server_name = gitlab_server_name or self._gitlab_mcp_server_name()
-                backend.tools = self._build_gitlab_tools()
-                backend.system_hints = self._gitlab_system_hint(gitlab_server_name)
             if gitlab_servers:
                 backend.mcp_servers = gitlab_servers
+                backend.system_hints = self._gitlab_system_hint(gitlab_server_name)
+            elif self._gitlab_tools_enabled():
+                gitlab_server_name = gitlab_server_name or self._gitlab_mcp_server_name()
+                backend.tools = self._build_gitlab_tools()
+                backend.system_hints = self._gitlab_system_hint(gitlab_server_name, fallback_tools=True)
             elif gitlab_error:
                 backend.mcp_status[gitlab_server_name or "GitLab-MCP"] = {"status": "failed", "error": gitlab_error}
             backend.set_handlers(
@@ -1436,10 +1447,12 @@ class Api:
                 servers, server_name, error = self._selected_gitlab_mcp_servers()
                 tools = []
                 hint = ""
-                if self._gitlab_tools_enabled():
+                if servers:
+                    hint = self._gitlab_system_hint(server_name)
+                elif self._gitlab_tools_enabled():
                     server_name = server_name or self._gitlab_mcp_server_name()
                     tools = self._build_gitlab_tools()
-                    hint = self._gitlab_system_hint(server_name)
+                    hint = self._gitlab_system_hint(server_name, fallback_tools=True)
                 self._run(self.backend.configure_app_tools(tools, hint, servers), timeout=60)
                 if error:
                     self.backend.mcp_status[server_name or "GitLab-MCP"] = {"status": "failed", "error": error}
