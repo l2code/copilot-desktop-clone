@@ -455,6 +455,142 @@ class Api:
         except Exception as e:
             return None, settings.get("mcp_server") or "GitLab-MCP", str(e)
 
+    def _gitlab_tools_enabled(self) -> bool:
+        """Whether chat should receive the app-owned GitLab MCP bridge tools."""
+        settings = self.settings.get_gitlab_settings()
+        if settings.get("data_source") == "mcp" or settings.get("mcp_config"):
+            return True
+        try:
+            return bool(self.gitlab_mcp._config_path())
+        except Exception:
+            return False
+
+    def _gitlab_mcp_server_name(self, fallback=None):
+        try:
+            _, name, _ = self.gitlab_mcp._server_config()
+            return name
+        except Exception:
+            return fallback or self.settings.get_gitlab_settings().get("mcp_server") or "GitLab-MCP"
+
+    def _gitlab_system_hint(self, server_name=None):
+        via = f"the configured GitLab MCP server `{server_name}`" if server_name else "the configured GitLab MCP server"
+        return (
+            "When the user asks about GitLab stories, current sprint/current iteration, "
+            "issues, epics, or backlog, use the app-provided GitLab tools first: "
+            "`gitlab_current_sprint`, `gitlab_search_stories`, `gitlab_get_issue`, "
+            "and `gitlab_mcp_status`. These tools call "
+            f"{via}. Do not run shell commands such as `gitlab-mcp`, PowerShell, "
+            "curl, or direct REST URLs for GitLab backlog/sprint work unless the "
+            "user explicitly asks for a shell command."
+        )
+
+    def _build_gitlab_tools(self):
+        from copilot.tools import Tool, ToolInvocation, ToolResult
+
+        def _json_result(payload, fallback_error="GitLab tool failed"):
+            text = json.dumps(payload, ensure_ascii=False, default=str)
+            if isinstance(payload, dict) and payload.get("ok") is False:
+                return ToolResult(
+                    text_result_for_llm=text,
+                    result_type="failure",
+                    error=str(payload.get("error") or fallback_error),
+                )
+            return ToolResult(text_result_for_llm=text, result_type="success")
+
+        async def _call(fn):
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, fn)
+
+        async def status(inv: ToolInvocation):
+            return _json_result(await _call(lambda: self.gitlab_mcp.status()))
+
+        async def current_sprint(inv: ToolInvocation):
+            args = inv.arguments or {}
+            return _json_result(await _call(lambda: self.gitlab_mcp.current_sprint(
+                group=args.get("group"),
+                assignee=args.get("assignee"),
+                labels=args.get("labels"),
+            )))
+
+        async def search_stories(inv: ToolInvocation):
+            args = inv.arguments or {}
+            return _json_result(await _call(lambda: self.gitlab_mcp.search_stories(
+                query=args.get("query") or "",
+                target=args.get("target"),
+                scope=args.get("scope") or "project",
+                state=args.get("state") or "opened",
+                labels=args.get("labels"),
+                assignee=args.get("assignee"),
+            )))
+
+        async def get_issue(inv: ToolInvocation):
+            args = inv.arguments or {}
+            return _json_result(await _call(lambda: self.gitlab_mcp.get_issue(
+                args.get("target"),
+                args.get("issue_iid") or args.get("iid"),
+            )))
+
+        return [
+            Tool(
+                name="gitlab_mcp_status",
+                description="Check whether the configured GitLab MCP server is reachable and list its available MCP tools.",
+                handler=status,
+                parameters={"type": "object", "properties": {}, "additionalProperties": False},
+                skip_permission=True,
+            ),
+            Tool(
+                name="gitlab_current_sprint",
+                description=(
+                    "List current sprint/current iteration GitLab issues using the configured GitLab MCP server. "
+                    "Use this before shell, curl, or REST calls for sprint story requests."
+                ),
+                handler=current_sprint,
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "group": {"type": "string", "description": "GitLab group id/path. Defaults to saved GitLab group."},
+                        "assignee": {"type": "string", "description": "Optional assignee username."},
+                        "labels": {"type": "string", "description": "Optional comma-separated labels."},
+                    },
+                    "additionalProperties": False,
+                },
+                skip_permission=True,
+            ),
+            Tool(
+                name="gitlab_search_stories",
+                description="Search/list GitLab stories or issues through the configured GitLab MCP server.",
+                handler=search_stories,
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "query": {"type": "string", "description": "Search text."},
+                        "target": {"type": "string", "description": "Project or group id/path. Defaults to saved target."},
+                        "scope": {"type": "string", "enum": ["project", "group"], "description": "Search scope."},
+                        "state": {"type": "string", "description": "Issue state, usually opened, closed, or all."},
+                        "labels": {"type": "string", "description": "Optional comma-separated labels."},
+                        "assignee": {"type": "string", "description": "Optional assignee username."},
+                    },
+                    "additionalProperties": False,
+                },
+                skip_permission=True,
+            ),
+            Tool(
+                name="gitlab_get_issue",
+                description="Load one GitLab issue/story by project target and issue IID through the configured GitLab MCP server.",
+                handler=get_issue,
+                parameters={
+                    "type": "object",
+                    "properties": {
+                        "target": {"type": "string", "description": "GitLab project id/path. Defaults to saved project."},
+                        "issue_iid": {"type": "integer", "description": "Issue IID within the project."},
+                    },
+                    "required": ["issue_iid"],
+                    "additionalProperties": False,
+                },
+                skip_permission=True,
+            ),
+        ]
+
     # ----- exposed to the UI -----
 
     def _start_blocking(self, github_token: str | None = None):
@@ -485,14 +621,12 @@ class Api:
             if config_discovery is not None:
                 backend.config_discovery = bool(config_discovery)
             gitlab_servers, gitlab_server_name, gitlab_error = self._selected_gitlab_mcp_servers()
+            if self._gitlab_tools_enabled():
+                gitlab_server_name = gitlab_server_name or self._gitlab_mcp_server_name()
+                backend.tools = self._build_gitlab_tools()
+                backend.system_hints = self._gitlab_system_hint(gitlab_server_name)
             if gitlab_servers:
                 backend.mcp_servers = gitlab_servers
-                backend.system_hints = (
-                    "When the user asks about GitLab stories, sprint/current iteration, "
-                    "issues, epics, or backlog, use the configured GitLab MCP tools "
-                    f"from `{gitlab_server_name}` before trying shell commands, curl, "
-                    "or direct REST URLs. Do not invent `gitlab-mcp.*` REST hosts."
-                )
             elif gitlab_error:
                 backend.mcp_status[gitlab_server_name or "GitLab-MCP"] = {"status": "failed", "error": gitlab_error}
             backend.set_handlers(
@@ -1300,14 +1434,14 @@ class Api:
             self._apply_gitlab_settings_env()
             if self.backend and self.backend.authenticated:
                 servers, server_name, error = self._selected_gitlab_mcp_servers()
-                if servers:
-                    self.backend.system_hints = (
-                        "When the user asks about GitLab stories, sprint/current iteration, "
-                        "issues, epics, or backlog, use the configured GitLab MCP tools "
-                        f"from `{server_name}` before trying shell commands, curl, or direct REST URLs."
-                    )
-                    self._run(self.backend.set_mcp_servers(servers), timeout=60)
-                elif error:
+                tools = []
+                hint = ""
+                if self._gitlab_tools_enabled():
+                    server_name = server_name or self._gitlab_mcp_server_name()
+                    tools = self._build_gitlab_tools()
+                    hint = self._gitlab_system_hint(server_name)
+                self._run(self.backend.configure_app_tools(tools, hint, servers), timeout=60)
+                if error:
                     self.backend.mcp_status[server_name or "GitLab-MCP"] = {"status": "failed", "error": error}
             return {"ok": True, "settings": settings, "status": status}
         except Exception as e:

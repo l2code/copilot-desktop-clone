@@ -1,7 +1,9 @@
+import asyncio
 import json
 import os
 import tempfile
 import unittest
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from activity import ActivityLog
@@ -273,6 +275,22 @@ class ServiceTests(unittest.TestCase):
 
         self.assertTrue(command.endswith("cmd.exe") or command == "cmd.exe")
         self.assertEqual(args[:2], ["/c", r"C:\devpod\gitlab-mcp-launcher.cmd"])
+
+    def test_copilot_backend_lists_app_tools(self):
+        from copilot_backend import CopilotBackend
+
+        class FakeToolsRpc:
+            async def list(self, request):
+                return SimpleNamespace(tools=[])
+
+        backend = CopilotBackend()
+        backend.client = SimpleNamespace(rpc=SimpleNamespace(tools=FakeToolsRpc()))
+        backend.tools = [SimpleNamespace(name="gitlab_current_sprint", description="List sprint stories")]
+
+        tools = asyncio.run(backend.list_tools())
+
+        self.assertEqual(tools[0]["name"], "gitlab_current_sprint")
+        self.assertEqual(tools[0]["server"], "app")
 
 
 if __name__ == "__main__":

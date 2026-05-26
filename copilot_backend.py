@@ -60,6 +60,7 @@ class CopilotBackend:
         self.working_dir = working_dir   # folder Copilot may read/run commands in
         self.instructions = ""           # custom instructions (system message, append mode)
         self.system_hints = ""           # app-generated guidance, kept separate from user instructions
+        self.tools = []                  # app-owned custom tools registered with the Copilot session
         self.mcp_servers = None          # dict[str, MCPServerConfig] for MCP tools
         self.mcp_status = {}             # name -> {status, error} from session events
         self.mcp_disabled = set()        # names the user has toggled off
@@ -281,6 +282,7 @@ class CopilotBackend:
             model=self.model,
             streaming=True,
             on_event=self._handle_event,
+            tools=self.tools or None,
             working_directory=self.working_dir,
             enable_config_discovery=discover,   # honor repo .github + ~/.copilot config
         )
@@ -314,6 +316,21 @@ class CopilotBackend:
 
     async def set_instructions(self, text):
         self.instructions = text or ""
+        await self._recreate()
+
+    async def configure_app_tools(self, tools=None, system_hints="", mcp_servers=None):
+        """Update app-owned custom tools and optional app-supplied MCP servers.
+
+        This is intentionally separate from config discovery: these tools are
+        registered directly with the session, so they still work when Copilot's
+        own MCP discovery leaves a server in the pending state.
+        """
+        self.tools = tools or []
+        self.system_hints = system_hints or ""
+        self.mcp_servers = mcp_servers or None
+        names = set((mcp_servers or {}).keys())
+        self.mcp_disabled &= names
+        self.mcp_status = {k: v for k, v in self.mcp_status.items() if k in names}
         await self._recreate()
 
     async def discover_mcp(self):
@@ -507,16 +524,28 @@ class CopilotBackend:
             return []
         try:
             res = await self.client.rpc.tools.list(ToolsListRequest(model=self.model))
+            sdk_tools = getattr(res, "tools", None) or []
         except Exception:
-            return []
+            sdk_tools = []
         out = []
-        for t in (getattr(res, "tools", None) or []):
+        for t in sdk_tools:
             ns = getattr(t, "namespaced_name", None) or ""
             out.append({
                 "name": getattr(t, "name", ""),
                 "namespaced": ns,
                 "server": ns.split("/")[0] if "/" in ns else "",
                 "description": (getattr(t, "description", "") or "")[:200],
+            })
+        seen = {(t.get("namespaced") or t.get("name")) for t in out}
+        for tool in self.tools or []:
+            name = getattr(tool, "name", "")
+            if not name or name in seen:
+                continue
+            out.append({
+                "name": name,
+                "namespaced": name,
+                "server": "app",
+                "description": (getattr(tool, "description", "") or "")[:200],
             })
         return out
 
