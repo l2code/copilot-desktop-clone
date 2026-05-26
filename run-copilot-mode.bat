@@ -10,6 +10,7 @@ set "COPILOT_WEBVIEW_PERSIST=1"
 set "COPILOT_WEBVIEW_HTTP=1"
 set "COPILOT_WEBVIEW_STORAGE=%TEMP%\copilot-desktop-webview-%RANDOM%-%RANDOM%"
 set "COPILOT_DEBUG=1"
+set "COPILOT_TRANSPORT=tcp"
 set "COPILOT_SKIP_START="
 
 if exist "%HERE%venv\Scripts\python.exe" (

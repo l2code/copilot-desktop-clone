@@ -134,7 +134,7 @@ Copilot SDK subprocess) uses standard proxy environment variables —
   environment variables are never overridden. Supported keys include
   `HTTP(S)_PROXY` / `NO_PROXY`, the Copilot CLI's `COPILOT_PROXY_USERNAME` /
   `COPILOT_PROXY_PASSWORD` / `COPILOT_PROXY_HOST`, `COPILOT_DESKTOP_CLI`, and
-  `COPILOT_NO_DISCOVERY`.
+  `COPILOT_TRANSPORT`, `COPILOT_START_WITH_DISCOVERY`, `COPILOT_NO_DISCOVERY`.
 - If you use the Copilot CLI's `COPILOT_PROXY_USERNAME` / `COPILOT_PROXY_PASSWORD`
   / `COPILOT_PROXY_HOST`, the app translates them into the standard proxy env it
   needs (URL-encoded `HTTP(S)_PROXY` plus `NODE_USE_ENV_PROXY` / `NODE_USE_SYSTEM_CA`,
@@ -144,6 +144,15 @@ Copilot SDK subprocess) uses standard proxy environment variables —
   ignores the ambient `COPILOT_EXE`, because a newer system-installed `copilot.exe`
   can break the SDK handshake (`invalid literal for int()` on ping). Only set
   `COPILOT_DESKTOP_CLI` to override with a binary that matches `github-copilot-sdk`.
+- Desktop startup uses the Copilot CLI's TCP transport by default
+  (`COPILOT_TRANSPORT=tcp`), matching the native Copilot app's connection shape.
+  It also leaves `.github` / `~/.copilot` MCP discovery off during the first
+  connection so a slow internal MCP server cannot block sign-in. After the green
+  connection state appears, open Settings and enable Discovery to load those MCP
+  servers. To restore eager startup discovery, set `COPILOT_START_WITH_DISCOVERY=1`.
+- Run `python diagnose.py` from the same shell/profile if connection still
+  stalls. It prints the exact step that fails: CLI launch, auth status, model
+  listing, or session creation.
 
 ## Notes / next steps
 - Tool permissions default to asking before file edits, shell commands, URL

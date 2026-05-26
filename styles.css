@@ -399,6 +399,10 @@
   .banner.warn{background:#bb800915;border:1px solid #bb800955;color:#e3b341}
   .banner.err{background:#da363315;border:1px solid #da363355;color:#ff7b72}
   .banner .dot{width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .banner span:nth-child(2){flex:1;min-width:0}
+  .banner button{border:1px solid currentColor;border-radius:6px;background:transparent;color:inherit;
+    padding:4px 9px;font-size:12px;font-weight:600;cursor:pointer;white-space:nowrap}
+  .banner button:hover{background:#ffffff12}
   .banner.ok .dot{background:var(--green)}
   .banner.warn .dot{background:#e3b341}
   .banner.err .dot{background:#ff7b72}

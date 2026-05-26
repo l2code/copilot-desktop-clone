@@ -26,6 +26,22 @@ from copilot import CopilotClient, SubprocessConfig
 def _dbg(*parts):
     if os.environ.get("COPILOT_DEBUG"):
         print(f"[dbg {time.strftime('%H:%M:%S')}]", *parts, file=sys.stderr, flush=True)
+
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    value = os.environ.get(name)
+    if value is None:
+        return default
+    return value.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _env_float(name: str, default: float) -> float:
+    try:
+        return float(os.environ.get(name, "") or default)
+    except ValueError:
+        return default
+
+
 from copilot.generated.session_events import SessionEventType
 from copilot.generated.rpc import (ModeSetRequest, SessionMode,
                                    MCPDiscoverRequest, MCPConfigEnableRequest,
@@ -53,11 +69,17 @@ class CopilotBackend:
         self.perm_rules = {"write": "ask", "shell": "ask", "url": "ask",
                            "mcp": "ask", "memory": "allow", "hook": "ask"}
         self._user_event_ids = []        # ids of user.message events, for undo
-        # Discover instructions + MCP servers from .github / ~/.copilot. Discovered
-        # MCP tools count toward the Copilot API's 128-tool-per-request cap, so this
-        # can be toggled off (or via COPILOT_NO_DISCOVERY=1) to stay under the limit.
-        self.config_discovery = (os.environ.get("COPILOT_NO_DISCOVERY", "").lower()
-                                 not in ("1", "true", "yes"))
+        # Discovering .github / ~/.copilot MCP config during the first session can
+        # block startup when a corporate/internal MCP server is slow or needs VPN.
+        # Start clean by default, then let Settings -> Discovery load it after the
+        # Copilot connection itself is healthy. Set COPILOT_START_WITH_DISCOVERY=1
+        # or COPILOT_CONFIG_DISCOVERY=1 to restore eager discovery.
+        if os.environ.get("COPILOT_CONFIG_DISCOVERY") is not None:
+            self.config_discovery = _env_flag("COPILOT_CONFIG_DISCOVERY")
+        elif _env_flag("COPILOT_NO_DISCOVERY"):
+            self.config_discovery = False
+        else:
+            self.config_discovery = _env_flag("COPILOT_START_WITH_DISCOVERY", False)
         self.client: CopilotClient | None = None
         self.session = None
         self._on_delta = None
@@ -158,14 +180,18 @@ class CopilotBackend:
         # Each step is bounded so a proxy/network stall surfaces a specific error
         # in the UI instead of hanging forever. The labels match the diagnose.py steps.
         self.client = CopilotClient(self._subprocess_cfg(), auto_start=False)
+        launch_timeout = _env_float("COPILOT_LAUNCH_TIMEOUT", 30)
+        auth_timeout = _env_float("COPILOT_AUTH_TIMEOUT", 30)
+        session_default = 75 if self.config_discovery else 45
+        session_timeout = _env_float("COPILOT_SESSION_TIMEOUT", session_default)
         _dbg("backend.start(): client.start() ...")
         try:
-            await asyncio.wait_for(self.client.start(), timeout=45)
+            await asyncio.wait_for(self.client.start(), timeout=launch_timeout)
         except asyncio.TimeoutError:
-            raise RuntimeError("Timed out launching the bundled Copilot CLI (check proxy settings).")
+            raise RuntimeError("Timed out launching the Copilot CLI.")
         _dbg("backend.start(): get_auth_status() ...")
         try:
-            status = await asyncio.wait_for(self.client.get_auth_status(), timeout=45)
+            status = await asyncio.wait_for(self.client.get_auth_status(), timeout=auth_timeout)
         except asyncio.TimeoutError:
             raise RuntimeError("Timed out checking sign-in status (proxy or auth handshake stalled).")
         self.authenticated = bool(getattr(status, "isAuthenticated", False))
@@ -176,20 +202,30 @@ class CopilotBackend:
         if self.authenticated:
             _dbg("backend.start(): create_session() ...")
             try:
-                self.session = await asyncio.wait_for(self._make_session(), timeout=60)
+                self.session = await asyncio.wait_for(self._make_session(), timeout=session_timeout)
             except asyncio.TimeoutError:
-                raise RuntimeError("Signed in, but timed out creating a session (proxy reach to GitHub).")
+                hint = " Try Settings -> Discovery after connecting." if self.config_discovery else ""
+                raise RuntimeError("Signed in, but timed out creating a Copilot session." + hint)
             _dbg("backend.start(): session created")
         else:
             self.session = None
         return status
 
     def _subprocess_cfg(self):
+        transport = (os.environ.get("COPILOT_TRANSPORT") or "tcp").strip().lower()
+        use_stdio = transport in ("stdio", "pipe", "pipes")
         kwargs = dict(
             github_token=self.github_token,
             use_logged_in_user=(self.github_token is None),
             cwd=self.working_dir,
+            use_stdio=use_stdio,
+            log_level=os.environ.get("COPILOT_CLI_LOG_LEVEL", "info"),
         )
+        if not use_stdio:
+            try:
+                kwargs["port"] = int(os.environ.get("COPILOT_CLI_PORT", "0") or 0)
+            except ValueError:
+                kwargs["port"] = 0
         # Use the SDK's *bundled* copilot binary by default — its protocol version
         # matches this SDK. We deliberately do NOT use the ambient COPILOT_EXE (e.g.
         # a newer system-installed copilot.exe), because a newer CLI's handshake can

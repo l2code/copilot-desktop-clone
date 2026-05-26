@@ -11,6 +11,7 @@ Run:  python app.py
 from __future__ import annotations
 
 import asyncio
+import concurrent.futures
 import json
 import logging
 import os
@@ -112,6 +113,13 @@ def _env_flag(name: str, default: bool = False) -> bool:
     if value is None:
         return default
     return value.strip().lower() in ("1", "true", "yes", "on")
+
+
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, "") or default)
+    except ValueError:
+        return default
 
 
 def _load_env_file() -> None:
@@ -282,6 +290,7 @@ class Api:
         self.active_session_id: str | None = None
         self._start_lock = threading.Lock()
         self._start_inflight = False
+        self._start_generation = 0
         self._last_start_result = None
         # Integrated terminals (PowerShell on Windows). Multiple tabs, each its own
         # shell; a new tab opens in the active project folder. Keyed by string id.
@@ -295,14 +304,28 @@ class Api:
         # The SDK is async; run one event loop in a background thread and
         # marshal coroutines onto it from the (sync) JS-facing methods.
         self.loop = asyncio.new_event_loop()
-        threading.Thread(target=self._run_loop, daemon=True).start()
+        threading.Thread(target=self._run_loop, args=(self.loop,), daemon=True).start()
 
-    def _run_loop(self):
-        asyncio.set_event_loop(self.loop)
-        self.loop.run_forever()
+    def _run_loop(self, loop):
+        asyncio.set_event_loop(loop)
+        loop.run_forever()
+
+    def _reset_loop(self):
+        old_loop = self.loop
+        self.loop = asyncio.new_event_loop()
+        threading.Thread(target=self._run_loop, args=(self.loop,), daemon=True).start()
+        try:
+            old_loop.call_soon_threadsafe(old_loop.stop)
+        except Exception:
+            pass
 
     def _run(self, coro, timeout=180):
-        return asyncio.run_coroutine_threadsafe(coro, self.loop).result(timeout=timeout)
+        fut = asyncio.run_coroutine_threadsafe(coro, self.loop)
+        try:
+            return fut.result(timeout=timeout)
+        except concurrent.futures.TimeoutError:
+            fut.cancel()
+            raise TimeoutError(f"Timed out after {timeout}s")
 
     def _js(self, fn, *args):
         """Queue a global JS call on the UI (non-blocking). The dispatcher thread
@@ -399,45 +422,96 @@ class Api:
         except Exception as e:
             _dbg("start(): storage/session bootstrap failed:", repr(e))
         from copilot_backend import CopilotBackend   # lazy: heavy SDK import, kept off the UI startup path
-        self.backend = CopilotBackend(github_token=token, working_dir=workdir)
-        self.backend.set_handlers(
-            on_delta=lambda c: self._js("onCopilotDelta", c),
-            on_done=self._handle_copilot_done,
-            on_error=self._handle_copilot_error,
-            on_activity=lambda d: self._js("onCopilotActivity", d),
-            on_permission=lambda p: self._js("onPermissionRequest", p),
-        )
+
+        def make_backend(config_discovery: bool | None = None):
+            backend = CopilotBackend(github_token=token, working_dir=workdir)
+            if config_discovery is not None:
+                backend.config_discovery = bool(config_discovery)
+            backend.set_handlers(
+                on_delta=lambda c: self._js("onCopilotDelta", c),
+                on_done=self._handle_copilot_done,
+                on_error=self._handle_copilot_error,
+                on_activity=lambda d: self._js("onCopilotActivity", d),
+                on_permission=lambda p: self._js("onPermissionRequest", p),
+            )
+            return backend
+
+        self.backend = make_backend()
+        connect_timeout = _env_int("COPILOT_CONNECT_TIMEOUT", 95)
+        model_timeout = _env_int("COPILOT_MODEL_TIMEOUT", 12)
+        warning = None
         try:
             _dbg("_start_blocking(): calling backend.start() ...")
-            status = self._run(self.backend.start(), timeout=200)
+            status = self._run(self.backend.start(), timeout=connect_timeout)
             _dbg("_start_blocking(): backend.start() returned; authenticated =", self.backend.authenticated)
             if not self.backend.authenticated:
                 self._last_start_result = {"ok": False, "needsAuth": True, "error": "Not signed in to GitHub Copilot",
-                        "host": os.environ.get("COPILOT_HOST", "")}
+                        "host": os.environ.get("COPILOT_HOST", ""), "workdir": workdir}
                 return self._last_start_result
             models = []
             try:   # bounded + non-fatal: a slow proxy shouldn't stall startup
                 _dbg("_start_blocking(): list_models() ...")
-                models = [getattr(m, "id", str(m)) for m in self._run(self.backend.list_models(), timeout=20)]
+                models = [getattr(m, "id", str(m)) for m in self._run(self.backend.list_models(), timeout=model_timeout)]
                 _dbg("_start_blocking(): list_models() returned", len(models), "models")
             except Exception as e:
                 _dbg("_start_blocking(): list_models() failed/timed out:", repr(e))
             _dbg("_start_blocking(): returning ok")
             self._last_start_result = {"ok": True, "status": str(status), "models": models,
-                    "workdir": self.backend.working_dir, "login": self.backend.login}
+                    "workdir": self.backend.working_dir, "login": self.backend.login,
+                    "discovery": bool(self.backend.config_discovery),
+                    "transport": os.environ.get("COPILOT_TRANSPORT") or "tcp",
+                    "warning": warning}
             return self._last_start_result
         except Exception as e:
             _dbg("_start_blocking(): EXCEPTION:", repr(e))
-            self._last_start_result = {"ok": False, "error": str(e)}
+            first_error = str(e)
+            if self.backend and self.backend.config_discovery:
+                _dbg("_start_blocking(): retrying once with config discovery disabled")
+                try:
+                    self._run(self.backend.stop(), timeout=5)
+                except Exception:
+                    pass
+                self.backend = make_backend(config_discovery=False)
+                try:
+                    status = self._run(self.backend.start(), timeout=connect_timeout)
+                    warning = "Connected with MCP/config discovery disabled after startup discovery failed: " + first_error
+                    models = []
+                    try:
+                        models = [getattr(m, "id", str(m)) for m in self._run(self.backend.list_models(), timeout=model_timeout)]
+                    except Exception as model_err:
+                        _dbg("_start_blocking(): list_models() after retry failed:", repr(model_err))
+                    self._last_start_result = {"ok": True, "status": str(status), "models": models,
+                            "workdir": self.backend.working_dir, "login": self.backend.login,
+                            "discovery": False, "transport": os.environ.get("COPILOT_TRANSPORT") or "tcp",
+                            "warning": warning}
+                    return self._last_start_result
+                except Exception as retry_err:
+                    first_error = first_error + " Retry without discovery also failed: " + str(retry_err)
+            if self.backend:
+                try:
+                    self._run(self.backend.stop(), timeout=5)
+                except Exception:
+                    pass
+                self.backend = None
+            self._reset_loop()
+            self._last_start_result = {"ok": False, "error": first_error, "workdir": workdir,
+                    "transport": os.environ.get("COPILOT_TRANSPORT") or "tcp"}
             return self._last_start_result
 
-    def _start_worker(self, github_token=None):
+    def _start_worker(self, github_token=None, generation=0):
+        res = {"ok": False, "error": "Copilot startup failed before returning a result"}
         try:
             res = self._start_blocking(github_token)
+        except Exception as e:
+            res = {"ok": False, "error": str(e)}
         finally:
             with self._start_lock:
-                self._start_inflight = False
-        self._js("onBackendReady", res)
+                if generation == self._start_generation:
+                    self._start_inflight = False
+        with self._start_lock:
+            stale = generation != self._start_generation
+        if not stale:
+            self._js("onBackendReady", res)
 
     def start(self, github_token: str | None = None):
         """Kick off Copilot connection without blocking the WebView bridge.
@@ -452,8 +526,30 @@ class Api:
             if self._start_inflight:
                 return {"ok": True, "starting": True}
             self._start_inflight = True
-        threading.Thread(target=self._start_worker, args=(github_token,), daemon=True).start()
+            self._start_generation += 1
+            generation = self._start_generation
+        threading.Thread(target=self._start_worker, args=(github_token, generation), daemon=True).start()
         return {"ok": True, "starting": True}
+
+    def reconnect_copilot(self, github_token: str | None = None):
+        """Forget the previous startup result and try connecting again.
+
+        This is intentionally best-effort: if an old SDK call is wedged in a
+        worker thread, the UI can still launch a new attempt and ignore the old
+        result when it eventually returns.
+        """
+        with self._start_lock:
+            self._start_inflight = False
+            self._start_generation += 1
+            self._last_start_result = None
+        if self.backend:
+            try:
+                self._run(self.backend.stop(), timeout=5)
+            except Exception:
+                pass
+        self.backend = None
+        self._reset_loop()
+        return self.start(github_token)
 
     def get_startup_options(self):
         return {
@@ -1363,7 +1459,8 @@ class Api:
             return {"ok": False, "error": str(e)}
 
     def get_config_discovery(self):
-        return {"ok": True, "on": bool(self.backend.config_discovery) if self.backend else True}
+        default_on = (_env_flag("COPILOT_START_WITH_DISCOVERY") or _env_flag("COPILOT_CONFIG_DISCOVERY")) and not _env_flag("COPILOT_NO_DISCOVERY")
+        return {"ok": True, "on": bool(self.backend.config_discovery) if self.backend else default_on}
 
     def set_config_discovery(self, on):
         if not self.backend:

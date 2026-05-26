@@ -37,6 +37,13 @@ def _redact(url: str) -> str:
     return re.sub(r"://([^:/]+):[^@]+@", r"://\1:***@", url or "")
 
 
+def _env_int(name: str, default: int) -> int:
+    try:
+        return int(os.environ.get(name, "") or default)
+    except ValueError:
+        return default
+
+
 async def _step(name: str, coro, timeout: float):
     t = time.time()
     print(f"\n-> {name}  (timeout {timeout:.0f}s)", flush=True)
@@ -59,6 +66,7 @@ async def main() -> int:
 
     print("=== Environment ===", flush=True)
     for k in ("COPILOT_ENV_FILE", "COPILOT_EXE", "COPILOT_HOST", "GITHUB_TOKEN",
+              "COPILOT_TRANSPORT", "COPILOT_START_WITH_DISCOVERY", "COPILOT_NO_DISCOVERY",
               "HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY",
               "NODE_USE_ENV_PROXY", "NODE_USE_SYSTEM_CA"):
         v = os.environ.get(k)
@@ -73,17 +81,23 @@ async def main() -> int:
     if os.environ.get("COPILOT_EXE"):
         print("\nNote: COPILOT_EXE is set but IGNORED (a newer CLI breaks the SDK handshake).", flush=True)
     cli_path = os.environ.get("COPILOT_DESKTOP_CLI")
+    transport = (os.environ.get("COPILOT_TRANSPORT") or "tcp").strip().lower()
+    use_stdio = transport in ("stdio", "pipe", "pipes")
     kwargs = dict(
         github_token=os.environ.get("GITHUB_TOKEN") or None,
         use_logged_in_user=(not os.environ.get("GITHUB_TOKEN")),
         cwd=os.getcwd(),
+        use_stdio=use_stdio,
         log_level="debug",
     )
+    if not use_stdio:
+        kwargs["port"] = _env_int("COPILOT_CLI_PORT", 0)
     if cli_path and os.path.isfile(cli_path):
         kwargs["cli_path"] = cli_path
         print(f"\nUsing COPILOT_DESKTOP_CLI: {cli_path}", flush=True)
     else:
         print("\nUsing the SDK's bundled copilot binary", flush=True)
+    print(f"Transport: {'stdio' if use_stdio else 'tcp'}", flush=True)
 
     client = CopilotClient(SubprocessConfig(**kwargs), auto_start=False)
     try:
@@ -102,9 +116,14 @@ async def main() -> int:
             # Session creation is what the app does next, and where config discovery
             # may try to start ~/.copilot MCP servers (the usual hang point).
             from copilot.session import PermissionRequestResult
-            discover = os.environ.get("COPILOT_NO_DISCOVERY", "").lower() not in ("1", "true", "yes")
+            if os.environ.get("COPILOT_START_WITH_DISCOVERY"):
+                discover = os.environ.get("COPILOT_START_WITH_DISCOVERY", "").lower() in ("1", "true", "yes", "on")
+            else:
+                discover = False
+            if os.environ.get("COPILOT_NO_DISCOVERY", "").lower() in ("1", "true", "yes", "on"):
+                discover = False
             print(f"\n   (enable_config_discovery = {discover}; "
-                  f"set COPILOT_NO_DISCOVERY=1 to skip ~/.copilot MCP discovery)", flush=True)
+                  f"set COPILOT_START_WITH_DISCOVERY=1 to load ~/.copilot MCP during startup)", flush=True)
 
             async def _mk_session():
                 return await client.create_session(

@@ -37,18 +37,25 @@ async function initBackend(){
     showConnecting(false);
     setStatus('warn');
     setAccount(null);
-    showBanner('warn', 'GitHub Copilot startup is skipped. Workspace and GitLab tools are available.');
+    showActionBanner('warn', 'GitHub Copilot startup is skipped. Workspace and GitLab tools are available.', 'Connect Copilot', 'connectCopilot');
     return;
   }
+  await connectCopilot(false);
+}
+
+async function connectCopilot(force){
+  if(backendStartTimer){ clearTimeout(backendStartTimer); backendStartTimer = null; }
+  backendReady = false;
+  setStatus('warn');
   showConnecting(true, 'Connecting to GitHub Copilot');   // spinner + animated dots while start() runs
   try{
-    const res = await window.pywebview.api.start();
+    const res = force ? await window.pywebview.api.reconnect_copilot() : await window.pywebview.api.start();
     if(res && res.starting){
       backendStartTimer = setTimeout(()=>{
         if(!backendReady){
           showConnecting(false);
           setStatus('warn');
-          showBanner('warn', 'Copilot is still connecting in the background. Workspace and GitLab tools are available.');
+          showActionBanner('warn', 'Copilot is still connecting in the background. Workspace and GitLab tools are available.', 'Retry', 'reconnectCopilot');
         }
       }, 45000);
     } else if(res && res.ready){
@@ -59,8 +66,12 @@ async function initBackend(){
   }catch(e){
     showConnecting(false);
     setStatus('err');
-    showBanner('err','Could not reach the backend: ' + e);
+    showActionBanner('err','Could not reach the backend: ' + e, 'Retry', 'reconnectCopilot');
   }
+}
+
+async function reconnectCopilot(){
+  await connectCopilot(true);
 }
 
 async function handleBackendResult(res){
@@ -81,6 +92,11 @@ async function handleBackendResult(res){
     await loadCommands();
     newChat();
     refreshUsage();
+    if(res.warning){
+      showActionBanner('warn', res.warning, 'Open settings', 'openSettings');
+    } else if(res.discovery === false){
+      showActionBanner('warn', 'Copilot is connected. MCP/config discovery is off for faster startup; turn it on in Settings when you want discovered MCP servers.', 'Open settings', 'openSettings');
+    }
     if(typeof checkToolBudget === 'function') checkToolBudget();   // pre-count tools vs the 128 cap
     if(typeof refreshWorkbench === 'function' && typeof wbTab !== 'undefined' && wbTab === 'gitlab'){
       refreshWorkbench();
@@ -96,7 +112,7 @@ async function handleBackendResult(res){
   } else {
     backendReady = false;
     setStatus('err');
-    showBanner('err','Copilot not connected: ' + ((res&&res.error)||'unknown error') + '.');
+    showActionBanner('err','Copilot not connected: ' + ((res&&res.error)||'unknown error') + '.', 'Retry', 'reconnectCopilot');
   }
 }
 
@@ -132,6 +148,12 @@ function setAccount(login){
 function showBanner(kind, text){
   document.getElementById('bannerHost').innerHTML =
     `<div class="banner ${kind}"><span class="dot"></span><span>${escapeHtml(text)}</span></div>`;
+}
+function showActionBanner(kind, text, label, action){
+  const safeAction = /^[a-zA-Z_$][\w$]*$/.test(action || '') ? action : '';
+  const button = safeAction ? `<button type="button" onclick="${safeAction}()">${escapeHtml(label || 'Open')}</button>` : '';
+  document.getElementById('bannerHost').innerHTML =
+    `<div class="banner ${kind}"><span class="dot"></span><span>${escapeHtml(text)}</span>${button}</div>`;
 }
 // ===== In-app sign-in (device flow) =====
 function showAuth(needed, msg){
